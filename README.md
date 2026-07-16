@@ -18,11 +18,16 @@ The `[app]` section contains settings that control overall application behavior.
 | `diags` | 15000 | Retrieval rate for diagnostic data, milliseconds  | 
 | (TBD)   | (TBD) | TODO                                              |
 
-### [processes] Config Section
+### [include] and [exclude] Config Sections
 
-The `[processes]` section lists processes to include or exclude. By default all processes are included (this section can be omitted or left empty). Each line should start with a `+` to include the process or `-` to exclude the process, followed by the process name. To only include specific processes, add a `-` line with no process name.
+The `[include]` and `[exclude]` sections are mutually exclusive and define which processes Uptime will monitor. When `[include]` is used, only matching processes are monitored and all others are ignored. When `[exclude]` is used, all eligible process are monitored except those matching anything in the list.
 
-Details about the process name (and regex?) are TBD.
+List entries consist of the executable filename and an optional specifier. If a specifier is needed, add a colon then the specifier regex (using .NET regex syntax, leading/trailing whitespace ignored) which must produce a valid Specifier result. (This means Linux applications with a colon in the app name can't be reference, which is unlikely to be a problem). For example, this will avoid reporting metrics from the IIS DefaultAppPool instance:
+
+```
+[exclude]
+w3wp.exe: -ap """"(?<Specifier>DefaultAppPool)""""
+```
 
 ### [diags] Config Section
 
