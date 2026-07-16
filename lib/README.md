@@ -4,7 +4,7 @@ Various utility classes used by dotnet-uptime and testable from the demo project
 
 ## ProcessScan
 
-The `ProcessHandler.Scan` method manages an externally-owned `ProcessList` dictionary of `DiagProcess` objects, which represents all processes which are "eligible" for monitoring. A process is eligible if it maintains a .NET diagnostics port. How this works is platform-specific. Diagnostic router connections are not supported at this time.
+The `ProcessHandler.Scan` method manages an externally-owned `ProcessList` dictionary of `DiagnosticProcess` objects, which represents all processes which are "eligible" for monitoring. A process is eligible if it maintains a .NET diagnostics port. How this works is platform-specific. Diagnostic router connections are not supported at this time.
 
 When `Scan` is invoked, the current process list is validated. The scan modifies the process list dictionary and returns two collections: a read-only list of newly-added processes, and a read-only list of removed processes.
 

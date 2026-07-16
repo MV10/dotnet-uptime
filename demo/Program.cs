@@ -16,11 +16,21 @@ class Program
         {
             case "list":
             {
-                var procs = new Dictionary<int, DiagProcess>();
+                var procs = new Dictionary<int, DiagnosticProcess>();
                 var handler = new ProcessHandler();
                 _ = handler.Scan(procs);
                 foreach(var kvp in procs)
-                    Console.WriteLine($"{kvp.Key}: {kvp.Value.CommandLine}");
+                {
+                    var p = kvp.Value;
+                    Console.WriteLine($"PID={p.PID}  File={p.Filename}");
+                    Console.WriteLine($"  Cookie={p.RuntimeInstanceCookie}");
+                    Console.WriteLine($"  Arch={p.ProcessArchitecture}");
+                    Console.WriteLine($"  Entry={p.ManagedEntrypointAssemblyName}");
+                    Console.WriteLine($"  CLR={p.ClrProductVersionString}");
+                    Console.WriteLine($"  RID={p.PortableRuntimeIdentifier}");
+                    Console.WriteLine($"  Cmd={p.CommandLine}");
+                    Console.WriteLine();
+                }
             }
                 break;
             

@@ -25,7 +25,7 @@ public class ProcessHandler
     /// Finds processes exposing a .NET diagnostic port and updates the externally-managed list
     /// of known processes. Returns read-only lists of processes that were added or removed.
     /// </summary>
-    public (IReadOnlyList<DiagProcess> AddedProcesses, IReadOnlyList<DiagProcess> RemovedProcesses) Scan(Dictionary<int, DiagProcess> knownProcesses, IReadOnlyDictionary<string, ProcessRule> rules = null, ProcessRuleType ruleType = default)
+    public (IReadOnlyList<DiagnosticProcess> AddedProcesses, IReadOnlyList<DiagnosticProcess> RemovedProcesses) Scan(Dictionary<int, DiagnosticProcess> knownProcesses, IReadOnlyDictionary<string, ProcessRule> rules = null, ProcessRuleType ruleType = default)
     {
         if (knownProcesses is null) throw new ArgumentNullException(nameof(knownProcesses));
 
@@ -37,8 +37,8 @@ public class ProcessHandler
         foreach (int pid in GetProcPublishedProcesses())
             discoveredPids.Add(pid);
 
-        var added = new List<DiagProcess>();
-        var removed = new List<DiagProcess>();
+        var added = new List<DiagnosticProcess>();
+        var removed = new List<DiagnosticProcess>();
         var now = DateTime.UtcNow;
 
         foreach (int pid in discoveredPids)
@@ -71,7 +71,18 @@ public class ProcessHandler
                 }
             }
 
-            var proc = new DiagProcess(pid, pathname, filename, specifier, commandLine, now);
+            var runtimeInfo = DiagnosticIpc.GetProcessInfo(pid);
+
+            // no valid CLR runtime on the other end of the diagnostic port
+            if (runtimeInfo.RuntimeInstanceCookie == Guid.Empty) continue;
+
+            var proc = new DiagnosticProcess(
+                pid, pathname, filename, specifier, commandLine, now,
+                runtimeInfo.RuntimeInstanceCookie,
+                runtimeInfo.ProcessArchitecture,
+                runtimeInfo.ManagedEntrypointAssemblyName,
+                runtimeInfo.ClrProductVersionString,
+                runtimeInfo.PortableRuntimeIdentifier);
             knownProcesses[pid] = proc;
             added.Add(proc);
         }
@@ -183,7 +194,7 @@ public class ProcessHandler
     /// Reads /proc/{pid}/status for the NSpid line to detect cross-namespace processes.
     /// Returns true if the process is in a different PID namespace.
     /// </summary>
-    private static bool TryGetNamespacePid(int hostPid, out int nsPid)
+    internal static bool TryGetNamespacePid(int hostPid, out int nsPid)
     {
         nsPid = hostPid;
 
@@ -218,7 +229,7 @@ public class ProcessHandler
     /// Gets the TMPDIR for a target process by reading /proc/{pid}/environ.
     /// Falls back to the platform temp directory if TMPDIR is not set or environ cannot be read.
     /// </summary>
-    private static string GetProcessTmpDir(int hostPid)
+    internal static string GetProcessTmpDir(int hostPid)
     {
         var fallback = Path.GetTempPath();
 
