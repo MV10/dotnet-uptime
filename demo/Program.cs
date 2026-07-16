@@ -1,4 +1,6 @@
-﻿namespace demo;
+﻿using MV10.DotnetUptime.Lib;
+
+namespace demo;
 
 class Program
 {

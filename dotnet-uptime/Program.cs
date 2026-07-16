@@ -1,4 +1,4 @@
-﻿namespace dotnet_uptime;
+﻿namespace MV10.DotnetUptime;
 
 class Program
 {
