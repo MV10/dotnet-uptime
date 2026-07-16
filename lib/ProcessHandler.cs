@@ -57,9 +57,16 @@ public class ProcessHandler
                 if (rules.TryGetValue(filename, out ProcessRule rule))
                 {
                     specifier = rule.FindSpecifier(commandLine);
+                    var matches = rule.SpecifierRegex is null || !string.IsNullOrEmpty(specifier);
+                    // skip in Exclude mode if everything does match
+                    // skip in Include mode if anything doesn't match
+                    if (matches && ruleType == ProcessRuleType.Exclude) continue;
+                    if (!matches && ruleType == ProcessRuleType.Include) continue;
                 }
                 else
                 {
+                    // for Exclude mode, no rule implies inclusion
+                    // for Include mode, every process has to be identified by a rule
                     if (ruleType == ProcessRuleType.Include) continue;
                 }
             }
