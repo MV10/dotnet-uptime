@@ -12,11 +12,13 @@ A simple text file named `uptime.conf` is in the same directory as the executabl
 
 The `[app]` section contains settings that control overall application behavior.
 
-| Setting | Default | Description                                       |
-|---------|---|---------------------------------------------------|
-| `pscan` | 15000 | Polling rate for eligible processes, milliseconds |
-| `diags` | 15000 | Retrieval rate for diagnostic data, milliseconds  | 
-| (TBD)   | (TBD) | TODO                                              |
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `pscan` | 15000 | Process scan interval, milliseconds |
+| `diags` | 15000 | Counter reporting interval, milliseconds |
+| `maxhistograms` | 10 | Max histogram instruments tracked per process |
+| `maxtimeseries` | 1000 | Max time series tracked per process |
+| `excludeself` | true | When true, `dotnet-uptime` excludes its own PID from monitoring |
 
 ### [include] and [exclude] Config Sections
 
@@ -31,6 +33,58 @@ w3wp.exe: -ap """"(?<Specifier>DefaultAppPool)""""
 
 ### [diags] Config Section
 
-The `[diags]` section lists diagnostics sources from which data is to be collected, and optionally includes or excludes processes from collection for each entry.
+The `[diags]` section lists EventPipe providers to collect. Each entry is a provider name, optionally followed by `[counter1,counter2]` to select specific counters (omit brackets for all counters). An optional process filter can follow a colon. If this section is missing or empty, defaults to `System.Runtime` (all counters, all processes).
 
-Details about these entries are TBD.
+```
+[diags]
+System.Runtime                               # all counters, all processes
+System.Runtime[cpu-usage,gc-heap-size]       # specific counters, all processes
+Microsoft.AspNetCore.Hosting: w3wp.exe       # all counters, only from w3wp.exe
+```
+
+### [otlp] Config Section
+
+The `[otlp]` section lists named OpenTelemetry OTLP push targets. Each name corresponds to its own config section with endpoint settings. Data is pushed to all listed targets simultaneously.
+
+```
+[otlp]
+local-collector
+splunk
+```
+
+Each named section has these settings:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `endpoint` | *(required)* | Remote collector URL |
+| `protocol` | grpc | Transport: `grpc` or `http` (http/protobuf) |
+| `header` | *(none)* | Header(s) in `Key:Value` format; semicolon-delimited for multiple |
+| `timeout` | 10000 | Export timeout, milliseconds |
+
+```
+[local-collector]
+endpoint=http://localhost:4317
+
+[splunk]
+endpoint=https://ingest.signalfx.com/v2/datapoint/otlp
+header=X-SF-Token:your-token-here
+```
+
+Section names listed in `[otlp]` must not conflict with built-in section names (`app`, `include`, `exclude`, `diags`, `otlp`, `http`).
+
+### [http] Config Section
+
+The optional `[http]` section exposes a local OpenTelemetry HTTP listener for scrape-based collection (currently Prometheus). At most one `[http]` section is allowed.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `type` | prometheus | Scrape format; `prometheus` is the only supported value currently |
+| `endpoint` | *(required)* | Local listen URL |
+
+```
+[http]
+type=prometheus
+endpoint=http://localhost:9464
+```
+
+OTLP and HTTP endpoints can coexist -- an enterprise deployment might push to Splunk while also exposing a local Prometheus scrape endpoint for Grafana.

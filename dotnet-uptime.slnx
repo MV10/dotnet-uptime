@@ -1,5 +1,4 @@
 <Solution>
-  <Project Path="demo/demo.csproj" />
   <Project Path="dotnet-uptime/dotnet-uptime.csproj" />
   <Project Path="lib/lib.csproj" />
 </Solution>
