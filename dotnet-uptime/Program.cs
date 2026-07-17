@@ -1,4 +1,6 @@
 using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using MV10.DotnetUptime.Lib;
 
 namespace MV10.DotnetUptime;
@@ -93,14 +95,81 @@ class Program
 
     static void MonitorProcess(int pid)
     {
-        // TODO: validate PID, start Generic Host with single MetricsSession
-        Console.WriteLine($"Monitor mode for PID {pid} is not yet implemented.");
+        // validate that the PID is an eligible .NET process
+        var runtimeInfo = DiagnosticIpc.GetProcessInfo(pid);
+        if (runtimeInfo.RuntimeInstanceCookie == Guid.Empty)
+        {
+            Console.WriteLine($"PID {pid} is not a running .NET process with a diagnostic port.");
+            return;
+        }
+
+        UptimeConfig config;
+        try
+        {
+            config = UptimeConfig.Load();
+        }
+        catch (ConfigException ex)
+        {
+            Console.WriteLine($"Config error: {ex.Message}");
+            return;
+        }
+
+        Console.WriteLine($"Monitoring PID {pid} ({runtimeInfo.ManagedEntrypointAssemblyName}), press Ctrl+C to stop.");
+        Console.WriteLine();
+
+        var callback = new ConsoleMetricsCallback();
+
+        using var session = new MetricsSession(pid, callback, config);
+        using var cts = new CancellationTokenSource();
+
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            cts.Cancel();
+        };
+
+        session.Start();
+
+        try
+        {
+            Task.Delay(Timeout.Infinite, cts.Token).Wait();
+        }
+        catch (AggregateException ex) when (ex.InnerException is TaskCanceledException)
+        {
+            // Ctrl+C
+        }
+
+        session.Stop();
+        Console.WriteLine("Stopped.");
     }
 
     static void RunService(string[] args)
     {
-        // TODO: start Generic Host with ProcessScannerService
-        Console.WriteLine("Service mode is not yet implemented.");
+        UptimeConfig config;
+        try
+        {
+            config = UptimeConfig.Load();
+        }
+        catch (ConfigException ex)
+        {
+            Console.WriteLine($"Config error: {ex.Message}");
+            return;
+        }
+
+        var callback = new ConsoleMetricsCallback();
+
+        // TODO: add OTel exporters based on config
+        var host = Host.CreateDefaultBuilder(args)
+            .ConfigureServices(services =>
+            {
+                services.AddSingleton(config);
+                services.AddSingleton<IMetricsCallback>(callback);
+                services.AddSingleton<ProcessManager>();
+                services.AddHostedService<ProcessScannerService>();
+            })
+            .Build();
+
+        host.Run();
     }
 
     static void PrintVersion()
@@ -120,5 +189,22 @@ Commands:
   <PID>         Monitor a single process (console + OTel output)
   version       Show program version
   help          Show this help message");
+    }
+}
+
+/// <summary>
+/// Writes counter payloads to the console.
+/// </summary>
+class ConsoleMetricsCallback : IMetricsCallback
+{
+    public void OnCounterPayload(int pid, CounterPayload payload)
+    {
+        var tags = string.IsNullOrEmpty(payload.Tags) ? "" : $" [{payload.Tags}]";
+        Console.WriteLine($"[{payload.Timestamp:HH:mm:ss}] {pid} {payload.ProviderName}/{payload.CounterName}: {payload.Value:F2} {payload.DisplayUnits}{tags}");
+    }
+
+    public void OnSessionEnded(int pid)
+    {
+        Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] Session ended for PID {pid}");
     }
 }

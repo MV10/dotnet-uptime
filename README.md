@@ -2,7 +2,39 @@
 
 > Work In Progress
 
-Uptime is a .NET telemetry collection and broadcast utility intended for stability-focused monitoring and alerting, as one finds in an enterprise environment. It runs as a Windows or Linux service (either under systemd or as a simple SysV init-scripted process). MacOS is not supported. It is essentially a continuously-running version of the standard [`dotnet-counters`](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-counters) utility with output made available as an [OpenTelemetry](https://opentelemetry.io/) (aka "OTel") endpoint. Each polling cycle (configurable, but 15 seconds by default) scans for new "eligible" processes, then retrieves all of the requested data from all targeted processes.
+Uptime is a .NET telemetry collection and broadcast utility supporting enterprise-style stability-focused monitoring, alerting, and triage for all .NET processes running on a given host. It runs as a Windows Service or a Linux service (systemd or SysV Init). MacOS is not supported. It is similar to a continuously-running version of the standard [`dotnet-counters`](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-counters) utility with output pushed to [OpenTelemetry](https://opentelemetry.io/) (aka "OTel") endpoints (OTLP or Prometheus HTTP). The service continuously scans for new "eligible" processes, and various name and command line pattern-matching rules control which processes are actually monitored. Several interactive features are available for testing and experimenting. The standard OTel Collector can be used to store data locally to provide high-resolution logging for detailed incident triage activities.
+
+This service only supports processes running under .NET 8 or newer. For a list of available metrics, refer to Microsoft's [Built-in Metrics in .NET](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics) documentation. Anything listed under "Older Metrics" are legacy and are not supported by Uptime. 
+
+## Usage
+
+### Interactive Commands
+
+The following commands can be run interactively from a console, over SSH, etc:
+
+```
+Usage: dotnet-uptime [command]
+
+Commands:
+  (none)        Run as a service (normal operation)
+  list          Show eligible .NET processes with full details
+  procs         Show eligible .NET processes (PID and command line only)
+  <PID>         Monitor a single process (console + OTel output)
+  version       Show program version
+  help          Show this help message
+```
+
+### Install as Windows Service
+
+(TBD)
+
+### Install as Linux Service (systemd)
+
+(TBD)
+
+### Install as Linux Service (SysV Init)
+
+(TBD)
 
 ## Configuration
 
@@ -24,7 +56,7 @@ The `[app]` section contains settings that control overall application behavior.
 
 The `[include]` and `[exclude]` sections are mutually exclusive and define which processes Uptime will monitor. When `[include]` is used, only matching processes are monitored and all others are ignored. When `[exclude]` is used, all eligible process are monitored except those matching anything in the list.
 
-List entries consist of the executable filename and an optional specifier. If a specifier is needed, add a colon then the specifier regex (using .NET regex syntax, leading/trailing whitespace ignored) which must produce a valid Specifier result. (This means Linux applications with a colon in the app name can't be reference, which is unlikely to be a problem). For example, this will avoid reporting metrics from the IIS DefaultAppPool instance:
+List entries consist of the executable filename and an optional specifier. If a specifier is needed, add a colon then the specifier regex (using [.NET regex syntax](https://learn.microsoft.com/en-us/dotnet/standard/base-types/regular-expression-language-quick-reference), and leading/trailing whitespace is ignored) which must produce a valid Specifier result. (This means Linux applications with a colon in the app name can't be referenced, but this is unlikely to be a problem). For example, this will avoid reporting metrics from the IIS w3wp.exe instance hosting DefaultAppPool:
 
 ```
 [exclude]

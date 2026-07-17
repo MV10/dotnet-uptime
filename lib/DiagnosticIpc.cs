@@ -11,7 +11,7 @@ namespace MV10.DotnetUptime.Lib;
 /// <summary>
 /// Queries process information from a .NET runtime via the diagnostic IPC protocol.
 /// </summary>
-internal static class DiagnosticIpc
+public static class DiagnosticIpc
 {
     private static readonly byte[] IpcMagic = Encoding.ASCII.GetBytes("DOTNET_IPC_V1\0");
     private const int HeaderSize = 20;
@@ -28,7 +28,7 @@ internal static class DiagnosticIpc
     /// Queries the runtime for process information via its diagnostic port.
     /// Tries v3, falls back to v2, then v1. Returns default values on failure.
     /// </summary>
-    internal static RuntimeProcessInfo GetProcessInfo(int pid)
+    public static RuntimeProcessInfo GetProcessInfo(int pid)
     {
         try
         {
@@ -258,7 +258,7 @@ internal static class DiagnosticIpc
 /// <summary>
 /// Data returned by the runtime's GetProcessInfo IPC command.
 /// </summary>
-internal class RuntimeProcessInfo
+public class RuntimeProcessInfo
 {
     public Guid RuntimeInstanceCookie { get; set; }
     public string ProcessArchitecture { get; set; } = string.Empty;
