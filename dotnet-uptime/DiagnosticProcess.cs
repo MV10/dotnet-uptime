@@ -1,5 +1,5 @@
 
-namespace MV10.DotnetUptime.Lib;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// Details of a process which exposes a .NET diagnostics port.

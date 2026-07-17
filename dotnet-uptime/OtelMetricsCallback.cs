@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using MV10.DotnetUptime.Lib;
 
 namespace MV10.DotnetUptime;
 

@@ -2,7 +2,7 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 
-namespace MV10.DotnetUptime.Lib;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// Parsed configuration from uptime.conf.

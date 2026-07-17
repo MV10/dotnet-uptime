@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace MV10.DotnetUptime.Lib;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// A helper class for finding and managing processes with a .NET diagnostics port.

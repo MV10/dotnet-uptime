@@ -1,7 +1,7 @@
 
 using System.Runtime.InteropServices;
 
-namespace MV10.DotnetUptime.Lib;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// Win32 API declarations for reading process command lines via the PEB.

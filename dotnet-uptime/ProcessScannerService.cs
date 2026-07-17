@@ -1,5 +1,4 @@
 
-using MV10.DotnetUptime.Lib;
 using Microsoft.Extensions.Hosting;
 
 namespace MV10.DotnetUptime;

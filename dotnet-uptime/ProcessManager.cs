@@ -1,5 +1,4 @@
 
-using MV10.DotnetUptime.Lib;
 
 namespace MV10.DotnetUptime;
 

@@ -1,5 +1,5 @@
 
-namespace MV10.DotnetUptime.Lib;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// A single counter measurement from a monitored process.
