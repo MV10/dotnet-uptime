@@ -26,15 +26,15 @@ Commands:
 
 ### Install as Windows Service
 
-(TBD)
+> WIP (working but documentation TODO)
 
 ### Install as Linux Service (systemd)
 
-(TBD)
+> WIP (working but documentation TODO)
 
 ### Install as Linux Service (SysV Init)
 
-(TBD)
+> WIP (working but documentation TODO)
 
 ## Configuration
 
@@ -56,7 +56,9 @@ The `[app]` section contains settings that control overall application behavior.
 
 The `[include]` and `[exclude]` sections are mutually exclusive and define which processes Uptime will monitor. When `[include]` is used, only matching processes are monitored and all others are ignored. When `[exclude]` is used, all eligible process are monitored except those matching anything in the list.
 
-List entries consist of the executable filename and an optional specifier. If a specifier is needed, add a colon then the specifier regex (using [.NET regex syntax](https://learn.microsoft.com/en-us/dotnet/standard/base-types/regular-expression-language-quick-reference), and leading/trailing whitespace is ignored) which must produce a valid Specifier result. (This means Linux applications with a colon in the app name can't be referenced, but this is unlikely to be a problem). For example, this will avoid reporting metrics from the IIS w3wp.exe instance hosting DefaultAppPool:
+List entries consist of the executable filename and an optional specifier. If a specifier is needed, add a colon then the specifier regex (using [.NET regex syntax](https://learn.microsoft.com/en-us/dotnet/standard/base-types/regular-expression-language-quick-reference), and leading/trailing whitespace is ignored) which must produce a valid Specifier result. (This means Linux applications with a colon in the app name can't be referenced, but this is not commonly a problem.)
+
+For example, the following will avoid reporting metrics from the IIS w3wp.exe instance hosting DefaultAppPool:
 
 ```
 [exclude]
@@ -65,7 +67,7 @@ w3wp.exe: -ap """"(?<Specifier>DefaultAppPool)""""
 
 ### [diags] Config Section
 
-The `[diags]` section lists EventPipe providers to collect. Each entry is a provider name, optionally followed by `[counter1,counter2]` to select specific counters (omit brackets for all counters). An optional process filter can follow a colon. If this section is missing or empty, defaults to `System.Runtime` (all counters, all processes).
+The `[diags]` section lists diagnostics providers to collect. Each entry is a provider name, optionally followed by `[counter1,counter2]` to select specific counters (omit the list to collect all counters). An optional executable name can be added following a colon, which means those metrics are only collected for matching processes. If this section is missing or empty, defaults to `System.Runtime` (all counters for every monitored process).
 
 ```
 [diags]

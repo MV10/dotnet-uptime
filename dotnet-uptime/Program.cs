@@ -160,6 +160,8 @@ class Program
 
         // TODO: add OTel exporters based on config
         var host = Host.CreateDefaultBuilder(args)
+            .UseWindowsService()
+            .UseSystemd()
             .ConfigureServices(services =>
             {
                 services.AddSingleton(config);
