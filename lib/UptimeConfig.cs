@@ -27,7 +27,7 @@ public class UptimeConfig
     {
         var exeDir = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
         var path = Path.Combine(exeDir, "uptime.conf");
-        if (!File.Exists(path)) throw new ConfigException($"Config file not found: {path}");
+        if (!File.Exists(path)) throw new ConfigMissingException(path);
         return Parse(File.ReadAllLines(path));
     }
 
@@ -289,6 +289,12 @@ public class UptimeConfig
         if (string.IsNullOrEmpty(http.Endpoint))
             throw new ConfigException("[http] is missing required 'endpoint' setting");
 
+        if (!Uri.TryCreate(http.Endpoint, UriKind.Absolute, out var uri))
+            throw new ConfigException($"[http] endpoint is not a valid URL: {http.Endpoint}");
+
+        if (!uri.IsLoopback)
+            throw new ConfigException("[http] endpoint must be a localhost address (the Prometheus listener has no security)");
+
         config.HttpEndpoint = http;
     }
 
@@ -385,3 +391,10 @@ public class HttpEndpointConfig
 /// Thrown for config file errors; message is reported to the console.
 /// </summary>
 public class ConfigException(string message) : Exception(message);
+
+/// <summary>
+/// Thrown when uptime.conf does not exist. Interactive commands may fall back to
+/// defaults, but service mode treats this as fatal.
+/// </summary>
+public class ConfigMissingException(string path)
+    : ConfigException($"Config file not found: {path}");

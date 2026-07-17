@@ -1,48 +1,45 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using MV10.DotnetUptime.Lib;
+using OpenTelemetry;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
 
 namespace MV10.DotnetUptime;
 
 class Program
 {
-    static void Main(string[] args)
+    static int Main(string[] args)
     {
         if (args.Length == 0)
-        {
-            RunService(args);
-            return;
-        }
+            return RunService(args);
 
         switch (args[0].ToLowerInvariant())
         {
             case "list":
                 ListProcesses(verbose: true);
-                break;
+                return 0;
 
             case "procs":
                 ListProcesses(verbose: false);
-                break;
+                return 0;
 
             case "version":
                 PrintVersion();
-                break;
+                return 0;
 
             case "help":
                 PrintHelp();
-                break;
+                return 0;
 
             default:
                 if (int.TryParse(args[0], out int pid))
-                {
-                    MonitorProcess(pid);
-                }
-                else
-                {
-                    PrintHelp();
-                }
-                break;
+                    return MonitorProcess(pid);
+
+                PrintHelp();
+                return 0;
         }
     }
 
@@ -53,9 +50,14 @@ class Program
         {
             config = UptimeConfig.Load();
         }
-        catch (ConfigException)
+        catch (ConfigMissingException)
         {
             // list/procs work without config (no filtering)
+        }
+        catch (ConfigException ex)
+        {
+            Console.WriteLine($"Config error: {ex.Message}");
+            return;
         }
 
         var procs = new Dictionary<int, DiagnosticProcess>();
@@ -93,14 +95,13 @@ class Program
         }
     }
 
-    static void MonitorProcess(int pid)
+    static int MonitorProcess(int pid)
     {
-        // validate that the PID is an eligible .NET process
         var runtimeInfo = DiagnosticIpc.GetProcessInfo(pid);
         if (runtimeInfo.RuntimeInstanceCookie == Guid.Empty)
         {
             Console.WriteLine($"PID {pid} is not a running .NET process with a diagnostic port.");
-            return;
+            return 1;
         }
 
         UptimeConfig config;
@@ -108,16 +109,23 @@ class Program
         {
             config = UptimeConfig.Load();
         }
+        catch (ConfigMissingException)
+        {
+            // no config file: monitor with built-in defaults (console output, no exporters)
+            config = UptimeConfig.Parse(Array.Empty<string>());
+        }
         catch (ConfigException ex)
         {
             Console.WriteLine($"Config error: {ex.Message}");
-            return;
+            return 1;
         }
 
         Console.WriteLine($"Monitoring PID {pid} ({runtimeInfo.ManagedEntrypointAssemblyName}), press Ctrl+C to stop.");
         Console.WriteLine();
 
-        var callback = new ConsoleMetricsCallback();
+        using var otelCallback = new OtelMetricsCallback();
+        var callback = new CompositeMetricsCallback(new ConsoleMetricsCallback(), otelCallback);
+        using var meterProvider = BuildMeterProvider(config);
 
         using var session = new MetricsSession(pid, callback, config);
         using var cts = new CancellationTokenSource();
@@ -141,9 +149,10 @@ class Program
 
         session.Stop();
         Console.WriteLine("Stopped.");
+        return 0;
     }
 
-    static void RunService(string[] args)
+    static int RunService(string[] args)
     {
         UptimeConfig config;
         try
@@ -152,26 +161,88 @@ class Program
         }
         catch (ConfigException ex)
         {
-            Console.WriteLine($"Config error: {ex.Message}");
-            return;
+            // service mode requires a valid config; exit non-zero so the
+            // service manager (systemd / Windows SCM) registers a failure
+            Console.Error.WriteLine($"Config error: {ex.Message}");
+            Console.Error.WriteLine("A valid uptime.conf is required to run as a service.");
+            return 1;
         }
 
-        var callback = new ConsoleMetricsCallback();
+        var otelCallback = new OtelMetricsCallback();
 
-        // TODO: add OTel exporters based on config
         var host = Host.CreateDefaultBuilder(args)
             .UseWindowsService()
             .UseSystemd()
+            .ConfigureLogging(logging => logging.SetMinimumLevel(LogLevel.Warning))
             .ConfigureServices(services =>
             {
                 services.AddSingleton(config);
-                services.AddSingleton<IMetricsCallback>(callback);
+                services.AddSingleton<IMetricsCallback>(otelCallback);
                 services.AddSingleton<ProcessManager>();
                 services.AddHostedService<ProcessScannerService>();
+                ConfigureOpenTelemetry(services, config);
             })
             .Build();
 
         host.Run();
+        return 0;
+    }
+
+    static void ConfigureOtlpExporters(MeterProviderBuilder metrics, UptimeConfig config)
+    {
+        foreach (var name in config.OtlpTargetNames)
+        {
+            var endpoint = config.OtlpEndpoints[name];
+            metrics.AddOtlpExporter(name, options =>
+            {
+                options.Endpoint = new Uri(endpoint.Endpoint);
+                options.Protocol = endpoint.Protocol == "http"
+                    ? OtlpExportProtocol.HttpProtobuf
+                    : OtlpExportProtocol.Grpc;
+                options.TimeoutMilliseconds = endpoint.TimeoutMs;
+                var headers = endpoint.GetHeaders();
+                if (headers.Count > 0)
+                    options.Headers = string.Join(",", headers.Select(h => $"{h.Key}={h.Value}"));
+            });
+        }
+    }
+
+    static void ConfigurePrometheus(MeterProviderBuilder metrics, UptimeConfig config)
+    {
+        if (config.HttpEndpoint is null) return;
+
+        var uri = new Uri(config.HttpEndpoint.Endpoint);
+        metrics.AddPrometheusHttpListener(options =>
+        {
+            options.Host = uri.Host;
+            options.Port = uri.Port;
+        });
+    }
+
+    static void ConfigureOpenTelemetry(IServiceCollection services, UptimeConfig config)
+    {
+        bool hasOtlp = config.OtlpTargetNames.Count > 0;
+        bool hasHttp = config.HttpEndpoint is not null;
+        if (!hasOtlp && !hasHttp) return;
+
+        services.AddOpenTelemetry()
+            .WithMetrics(metrics =>
+            {
+                metrics.AddMeter(OtelMetricsCallback.MeterName);
+                ConfigureOtlpExporters(metrics, config);
+                ConfigurePrometheus(metrics, config);
+            });
+    }
+
+    static MeterProvider BuildMeterProvider(UptimeConfig config)
+    {
+        var builder = Sdk.CreateMeterProviderBuilder()
+            .AddMeter(OtelMetricsCallback.MeterName);
+
+        ConfigureOtlpExporters(builder, config);
+        ConfigurePrometheus(builder, config);
+
+        return builder.Build();
     }
 
     static void PrintVersion()

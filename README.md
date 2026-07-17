@@ -2,9 +2,13 @@
 
 > Work In Progress
 
-Uptime is a .NET telemetry collection and broadcast utility supporting enterprise-style stability-focused monitoring, alerting, and triage for all .NET processes running on a given host. It runs as a Windows Service or a Linux service (systemd or SysV Init). MacOS is not supported. It is similar to a continuously-running version of the standard [`dotnet-counters`](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-counters) utility with output pushed to [OpenTelemetry](https://opentelemetry.io/) (aka "OTel") endpoints (OTLP or Prometheus HTTP). The service continuously scans for new "eligible" processes, and various name and command line pattern-matching rules control which processes are actually monitored. Several interactive features are available for testing and experimenting. The standard OTel Collector can be used to store data locally to provide high-resolution logging for detailed incident triage activities.
+Uptime is a .NET diagnostics collection and telemetry utility supporting enterprise-style stability-focused observability, monitoring, alerting, and triage for _all_ .NET processes running on a given host. It runs as a Windows Service or a Linux service (systemd or SysV Init). MacOS is not supported. It is similar to a continuously-running version of the standard [`dotnet-counters`](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-counters) utility with output pushed to [OpenTelemetry](https://opentelemetry.io/) (aka "OTel") endpoints (OTLP or Prometheus HTTP).
 
-This service only supports processes running under .NET 8 or newer. For a list of available metrics, refer to Microsoft's [Built-in Metrics in .NET](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics) documentation. Anything listed under "Older Metrics" are legacy and are not supported by Uptime. 
+The primary value is that diagnostics for every .NET application is automatically made available without making _any_ changes to the individual apps... including vendor and other third-party applications where you have no control over the source code. Without Uptime, each and every individual application would need to deal with a variety of complex issues to expose the same data. Uptime is designed to be a fire-and-forget service that can be distributed broadly to many thousands of servers.
+
+The service continuously scans for new "eligible" processes, and various name and command line pattern-matching rules control which processes are actually monitored. Several interactive features are available for testing and experimenting. It supports Linux-hosted containers (run it on the underlying host), but it probably will not work with Windows-hosted containers (untested, but routed diagnostic ports are not supported).
+
+Uptime only supports processes running under .NET 8 or newer. For a list of available metrics, refer to Microsoft's [Built-in Metrics in .NET](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics) documentation. Anything listed under "Older Metrics" is legacy and is not supported by Uptime. 
 
 ## Usage
 
@@ -38,7 +42,7 @@ Commands:
 
 ## Configuration
 
-A simple text file named `uptime.conf` is in the same directory as the executable. It defines polling frequencies, OTel endpoint details, process include/exclude specifications, diagnostics sources and required metrics. Lines or any trailing content prefixed by a hash symbol (`#`) are treated as comments and disregarded. Settings are grouped into `[sections]` exclusively containing either `key=value` pairs or lists of values. Blank lines are ignored and leading/trailing whitespace is ignored.
+A simple text file named `uptime.conf` should be placed in the same directory as the executable. It defines polling frequencies, OTel endpoint details, process include/exclude specifications, diagnostics sources and required metrics. Lines or any trailing content prefixed by a hash symbol (`#`) are treated as comments and disregarded. Settings are grouped into `[sections]` exclusively containing either `key=value` pairs or lists of values. Blank lines are ignored and leading/trailing whitespace is ignored. The application will not start in service mode without a config file, but the interactive commands will work with default values.
 
 ### [app] Config Section
 
@@ -78,7 +82,7 @@ Microsoft.AspNetCore.Hosting: w3wp.exe       # all counters, only from w3wp.exe
 
 ### [otlp] Config Section
 
-The `[otlp]` section lists named OpenTelemetry OTLP push targets. Each name corresponds to its own config section with endpoint settings. Data is pushed to all listed targets simultaneously.
+The `[otlp]` section lists named OpenTelemetry OTLP push targets. Each name corresponds to its own config section with endpoint settings. Data is pushed to all listed targets simultaneously. Section names listed in `[otlp]` must not conflict with built-in section names (`app`, `include`, `exclude`, `diags`, `otlp`, `http`).
 
 ```
 [otlp]
@@ -104,11 +108,11 @@ endpoint=https://ingest.signalfx.com/v2/datapoint/otlp
 header=X-SF-Token:your-token-here
 ```
 
-Section names listed in `[otlp]` must not conflict with built-in section names (`app`, `include`, `exclude`, `diags`, `otlp`, `http`).
+Any valid OTLP endpoint can be listed (DataDog, Loki, New Relic, etc.). For example, the standard OTel Collector could be run locally to store data on the server itself as high-resolution logging for detailed incident triage activities, similar to legacy PerfMon BLG files.
 
 ### [http] Config Section
 
-The optional `[http]` section exposes a local OpenTelemetry HTTP listener for scrape-based collection (currently Prometheus). At most one `[http]` section is allowed.
+The optional `[http]` section exposes an HTTP listener for scrape-based telemetry collection. At most one `[http]` section is allowed. OTLP and HTTP endpoints can coexist -- an enterprise deployment might push to Splunk while also exposing a local Prometheus scrape endpoint for utilities like Grafana.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -121,4 +125,4 @@ type=prometheus
 endpoint=http://localhost:9464
 ```
 
-OTLP and HTTP endpoints can coexist -- an enterprise deployment might push to Splunk while also exposing a local Prometheus scrape endpoint for Grafana.
+For a Prometheus endpoint (which is the only standard HTTP format defined today), only `localhost` is supported (or equivalents, `127.0.0.1` or `::1`). This endpoint is _not_ secure and is typically only suited for development purposes. The OTel team has expressly stated the built-in HTTP listener will _never_ be suited for production usage. For secure, broadly accessible Prometheus data, a separate OTel collector should be used to expose Prometheus data. That is beyond the scope of the Uptime service.
