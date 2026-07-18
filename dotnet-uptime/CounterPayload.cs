@@ -14,6 +14,17 @@ public class CounterPayload
     public DateTime Timestamp { get; init; }
     public string Tags { get; init; }
     public CounterKind Kind { get; init; }
+
+    /// <summary>
+    /// Namespace-internal PID when the monitored process runs in a separate PID
+    /// namespace (a container); null for host processes.
+    /// </summary>
+    public int? ContainerPID { get; init; }
+
+    /// <summary>
+    /// Container ID from the process cgroup (Docker/containerd); null for host processes.
+    /// </summary>
+    public string ContainerID { get; init; }
 }
 
 public enum CounterKind

@@ -6,7 +6,7 @@ Uptime is a .NET diagnostics collection and telemetry utility supporting enterpr
 
 The primary value is that diagnostics for every .NET application is automatically made available without making _any_ changes to the individual apps... including vendor and other third-party applications where you have no control over the source code. Without Uptime, each and every individual application would need to deal with a variety of complex issues to expose the same data. Uptime is designed to be a fire-and-forget service that can be distributed broadly to many thousands of servers.
 
-The service continuously scans for new "eligible" processes, and various name and command line pattern-matching rules control which processes are actually monitored. Several interactive features are available for testing and experimenting. It supports Linux-hosted containers (run it on the underlying host), but it probably will not work with Windows-hosted containers (untested, but routed diagnostic ports are not supported).
+The service continuously scans for new "eligible" processes, and various name and command line pattern-matching rules control which processes are actually monitored. Several interactive features are available for testing and experimenting. It supports Linux-hosted containers. Run it on the underlying host; metrics are tagged with  the host PID, the 64-character container ID, and the PID inside the container. Uptime probably will not find processes running in Windows-hosted containers: routed diagnostic ports are not currently supported, and that's typically how container diagnostics are surfaced on Windows.
 
 Uptime only supports processes running under .NET 8 or newer. For a list of available metrics, refer to Microsoft's [Built-in Metrics in .NET](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics) documentation. Anything listed under "Older Metrics" is legacy and is not supported by Uptime. 
 
@@ -27,6 +27,10 @@ Commands:
   version       Show program version
   help          Show this help message
 ```
+
+## Installation
+
+Releases are available as framework-dependent
 
 ### Install as Windows Service
 

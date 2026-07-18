@@ -27,6 +27,13 @@ class OtelMetricsCallback : IMetricsCallback, IDisposable
             { "counter.kind", payload.Kind == CounterKind.Rate ? "rate" : "gauge" }
         };
 
+        // only present when the monitored process runs in a container
+        if (payload.ContainerPID.HasValue)
+            tags.Add("container.pid", payload.ContainerPID.Value);
+
+        if (!string.IsNullOrEmpty(payload.ContainerID))
+            tags.Add("container.id", payload.ContainerID);
+
         if (!string.IsNullOrEmpty(payload.Tags))
             tags.Add("counter.tags", payload.Tags);
 

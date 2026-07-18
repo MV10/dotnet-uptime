@@ -18,6 +18,8 @@ public class MetricsSession : IDisposable
     private const string MetricsProviderName = "System.Diagnostics.Metrics";
 
     private readonly int pid;
+    private readonly int? containerPid;
+    private readonly string containerId;
     private readonly IMetricsCallback callback;
     private readonly List<DiagProviderSpec> providers;
     private readonly int intervalSeconds;
@@ -37,6 +39,10 @@ public class MetricsSession : IDisposable
     public MetricsSession(int pid, IMetricsCallback callback, UptimeConfig config)
     {
         this.pid = pid;
+        // a differing namespace PID means the process runs in a container
+        if (ProcessHandler.TryGetNamespacePid(pid, out int nsPid))
+            containerPid = nsPid;
+        containerId = ProcessHandler.GetContainerId(pid);
         this.callback = callback;
         providers = config.DiagProviders;
         intervalSeconds = config.App.DiagnosticsIntervalMs / 1000;
@@ -195,7 +201,9 @@ public class MetricsSession : IDisposable
             DisplayUnits = displayUnits,
             Value = value,
             Timestamp = traceEvent.TimeStamp,
-            Kind = kind
+            Kind = kind,
+            ContainerPID = containerPid,
+            ContainerID = containerId
         });
     }
 
@@ -249,7 +257,9 @@ public class MetricsSession : IDisposable
             Value = value,
             Timestamp = traceEvent.TimeStamp,
             Tags = tags,
-            Kind = kind
+            Kind = kind,
+            ContainerPID = containerPid,
+            ContainerID = containerId
         });
     }
 
@@ -288,7 +298,9 @@ public class MetricsSession : IDisposable
                 Value = val,
                 Timestamp = traceEvent.TimeStamp,
                 Tags = pctTag,
-                Kind = CounterKind.Gauge
+                Kind = CounterKind.Gauge,
+                ContainerPID = containerPid,
+                ContainerID = containerId
             });
         }
     }

@@ -21,6 +21,9 @@ public class ProcessHandler
             ? @"^dotnet-diagnostic-(\d+)$"
             : @"^dotnet-diagnostic-(\d+)-(\d+)-socket$";
 
+    // the 64-hex-character container ID Docker/containerd embed in cgroup paths
+    private static readonly Regex ContainerIdPattern = new(@"[0-9a-f]{64}", RegexOptions.Compiled);
+
     /// <summary>
     /// Finds processes exposing a .NET diagnostic port and updates the externally-managed list
     /// of known processes. Returns read-only lists of processes that were added or removed.
@@ -253,6 +256,33 @@ public class ProcessHandler
         }
 
         return fallback;
+    }
+
+    /// <summary>
+    /// Reads the container ID from /proc/{pid}/cgroup by matching the 64-hex-character
+    /// identifier Docker and containerd embed in the cgroup path (covering both the
+    /// cgroupfs and systemd drivers). Returns null for host processes or when no
+    /// container ID is present.
+    /// </summary>
+    internal static string GetContainerId(int hostPid)
+    {
+        string[] lines;
+        try
+        {
+            lines = File.ReadAllLines($"/proc/{hostPid}/cgroup");
+        }
+        catch
+        {
+            return null;
+        }
+
+        foreach (var line in lines)
+        {
+            var match = ContainerIdPattern.Match(line);
+            if (match.Success) return match.Value;
+        }
+
+        return null;
     }
 
     /// <summary>
