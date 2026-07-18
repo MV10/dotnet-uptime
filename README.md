@@ -126,7 +126,11 @@ Register it to start at boot with `sudo update-rc.d dotnet-uptime defaults`, the
 
 ## Configuration
 
-A simple text file named `uptime.conf` should be placed in the same directory as the executable. It defines polling frequencies, OTel endpoint details, process include/exclude specifications, diagnostics sources and required metrics. Lines or any trailing content prefixed by a hash symbol (`#`) are treated as comments and disregarded. Settings are grouped into `[sections]` exclusively containing either `key=value` pairs or lists of values. Blank lines are ignored and leading/trailing whitespace is ignored. The application will not start in service mode without a config file, but the interactive commands will work with default values.
+You must create a configuration file to run Uptime as a service. (The interactive commands will use defaults if no config is found.)
+
+Configuration is a simple text file named `uptime.conf` in the same directory as the application. The repository has a [sample](https://github.com/MV10/dotnet-uptime/blob/master/dotnet-uptime/uptime.conf) configuration file but this is not packaged with the release files.
+
+Config defines process polling frequency, OTel endpoint details, process include/exclude specifications, diagnostics sources and required metrics. Lines or any trailing content prefixed by a hash symbol (`#`) are treated as comments and disregarded. Settings are grouped into `[sections]` exclusively containing either `key=value` pairs or lists of values. Blank lines are ignored and leading/trailing whitespace is ignored. The application will not start in service mode without a config file, but the interactive commands will work with default values.
 
 ### [app] Config Section
 
