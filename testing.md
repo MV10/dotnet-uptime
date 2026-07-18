@@ -1,6 +1,6 @@
 # Testing
 
-Locally testing Uptime is easy. The first portion of these instructions are for Linux but Windows users should read this, it is nearly identical for Windows (details are provided towards the end).
+Testing Uptime locally is easy. The first portion of these instructions are for Linux but Windows users should read this, it is nearly identical for Windows (details are provided towards the end).
 
 At a high level, you will download a small Collector application, add simple config files to both the Collector and Uptime, start the Collector, use Uptime to find a .NET PID running on your system (you must provide that app), and start Uptime pointing to that PID. The Collector will begin streaming all metrics from that app to the console.
 
@@ -14,7 +14,7 @@ This is not a demonstration of the dev-oriented Prometheus listener, which is a 
 
 Download and extract the `otelcol-contrib` archive. You will store this in your home directory in `bin/otel-collector`.
 
-On Linux it is a standalone binary — no service manager or root needed. Note the version numbers (0.109.0) embedded twice in the URL.
+Note the version numbers (0.109.0) embedded twice in the URL.
 
 ```bash
 mkdir -p ~/bin/otel-collector && cd ~/bin/otel-collector
@@ -101,7 +101,7 @@ installation is required.
 
 ### 1. Get the collector
 
-Download `otelcol-contrib_<ver>_windows_amd64.tar.gz` from the same [releases page](https://github.com/open-telemetry/opentelemetry-collector-releases/releases) and extract `otelcol-contrib.exe`, e.g. to `C:\otel-collector\`.
+Download `otelcol-contrib_<ver>_windows_amd64.tar.gz` from the [releases page](https://github.com/open-telemetry/opentelemetry-collector-releases/releases) and extract `otelcol-contrib.exe`, e.g. to `C:\otel-collector\`.
 
 ### 2. Collector config
 
