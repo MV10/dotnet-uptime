@@ -1,7 +1,7 @@
 
 using System.Text.RegularExpressions;
 
-namespace MV10.DotnetUptime;
+namespace MV10.DotnetUptime.Processes;
 
 /// <summary>
 /// Details of a rule for process inclusion or exclusion.

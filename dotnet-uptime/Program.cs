@@ -2,9 +2,8 @@ using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using OpenTelemetry;
-using OpenTelemetry.Exporter;
-using OpenTelemetry.Metrics;
+using MV10.DotnetUptime.Otel;
+using MV10.DotnetUptime.Processes;
 
 namespace MV10.DotnetUptime;
 
@@ -124,7 +123,7 @@ class Program
 
         using var otelCallback = new OtelMetricsCallback();
         var callback = new CompositeMetricsCallback(new ConsoleMetricsCallback(), otelCallback);
-        using var meterProvider = BuildMeterProvider(config);
+        using var meterProvider = OtelConfiguration.BuildMeterProvider(config);
 
         using var session = new MetricsSession(pid, callback, config);
         using var cts = new CancellationTokenSource();
@@ -179,69 +178,12 @@ class Program
                 services.AddSingleton<IMetricsCallback>(otelCallback);
                 services.AddSingleton<ProcessManager>();
                 services.AddHostedService<ProcessScannerService>();
-                ConfigureOpenTelemetry(services, config);
+                OtelConfiguration.ConfigureOpenTelemetry(services, config);
             })
             .Build();
 
         host.Run();
         return 0;
-    }
-
-    static void ConfigureOtlpExporters(MeterProviderBuilder metrics, UptimeConfig config)
-    {
-        foreach (var name in config.OtlpTargetNames)
-        {
-            var endpoint = config.OtlpEndpoints[name];
-            metrics.AddOtlpExporter(name, options =>
-            {
-                options.Endpoint = new Uri(endpoint.Endpoint);
-                options.Protocol = endpoint.Protocol == "http"
-                    ? OtlpExportProtocol.HttpProtobuf
-                    : OtlpExportProtocol.Grpc;
-                options.TimeoutMilliseconds = endpoint.TimeoutMs;
-                var headers = endpoint.GetHeaders();
-                if (headers.Count > 0)
-                    options.Headers = string.Join(",", headers.Select(h => $"{h.Key}={h.Value}"));
-            });
-        }
-    }
-
-    static void ConfigurePrometheus(MeterProviderBuilder metrics, UptimeConfig config)
-    {
-        if (config.HttpEndpoint is null) return;
-
-        var uri = new Uri(config.HttpEndpoint.Endpoint);
-        metrics.AddPrometheusHttpListener(options =>
-        {
-            options.Host = uri.Host;
-            options.Port = uri.Port;
-        });
-    }
-
-    static void ConfigureOpenTelemetry(IServiceCollection services, UptimeConfig config)
-    {
-        bool hasOtlp = config.OtlpTargetNames.Count > 0;
-        bool hasHttp = config.HttpEndpoint is not null;
-        if (!hasOtlp && !hasHttp) return;
-
-        services.AddOpenTelemetry()
-            .WithMetrics(metrics =>
-            {
-                metrics.AddMeter(OtelMetricsCallback.MeterName);
-                ConfigureOtlpExporters(metrics, config);
-                ConfigurePrometheus(metrics, config);
-            });
-    }
-
-    static MeterProvider BuildMeterProvider(UptimeConfig config)
-    {
-        var builder = Sdk.CreateMeterProviderBuilder()
-            .AddMeter(OtelMetricsCallback.MeterName);
-
-        ConfigureOtlpExporters(builder, config);
-        ConfigurePrometheus(builder, config);
-
-        return builder.Build();
     }
 
     static void PrintVersion()

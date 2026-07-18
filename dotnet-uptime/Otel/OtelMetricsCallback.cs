@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
-namespace MV10.DotnetUptime;
+namespace MV10.DotnetUptime.Otel;
 
 /// <summary>
 /// Records counter payloads on System.Diagnostics.Metrics instruments for OTel export.
@@ -45,30 +45,5 @@ class OtelMetricsCallback : IMetricsCallback, IDisposable
     public void Dispose()
     {
         meter.Dispose();
-    }
-}
-
-/// <summary>
-/// Delegates to multiple IMetricsCallback implementations.
-/// </summary>
-class CompositeMetricsCallback : IMetricsCallback
-{
-    private readonly IMetricsCallback[] callbacks;
-
-    public CompositeMetricsCallback(params IMetricsCallback[] callbacks)
-    {
-        this.callbacks = callbacks;
-    }
-
-    public void OnCounterPayload(int pid, CounterPayload payload)
-    {
-        foreach (var cb in callbacks)
-            cb.OnCounterPayload(pid, payload);
-    }
-
-    public void OnSessionEnded(int pid)
-    {
-        foreach (var cb in callbacks)
-            cb.OnSessionEnded(pid);
     }
 }

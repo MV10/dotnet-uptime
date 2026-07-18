@@ -1,5 +1,5 @@
 
-namespace MV10.DotnetUptime;
+namespace MV10.DotnetUptime.Processes;
 
 public enum ProcessRuleType
 {

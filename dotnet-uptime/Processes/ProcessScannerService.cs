@@ -1,7 +1,7 @@
 
 using Microsoft.Extensions.Hosting;
 
-namespace MV10.DotnetUptime;
+namespace MV10.DotnetUptime.Processes;
 
 /// <summary>
 /// BackgroundService that runs the process scan loop at the configured interval.

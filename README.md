@@ -30,17 +30,19 @@ Commands:
 
 ## Installation
 
-Releases are available as framework-dependent
+Uptime can be installed anywhere (enterprise environments often keep third-party software separate from system drives or mounts). Each release offers Windows and Linux versions packaged two ways. The "self-contained deployment" (scd) builds are single files which are ready to use as soon as you download it (other than configuration). The "framework-dependent" (fx) builds require a machine-wide installation of the .NET runtime. Both versions work identically once installed.
+
+You must manually create a configuration file (refer to the _Configuration_ section below).
 
 ### Install as Windows Service
 
 > WIP (working but documentation TODO)
 
-### Install as Linux Service (systemd)
+### Install as Linux systemd Service
 
 > WIP (working but documentation TODO)
 
-### Install as Linux Service (SysV Init)
+### Install as Linux SysV Init Service
 
 > WIP (working but documentation TODO)
 
