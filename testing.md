@@ -2,6 +2,8 @@
 
 Testing Uptime locally is easy. The first portion of these instructions are for Linux but Windows users should read this, it is nearly identical for Windows (details are provided towards the end).
 
+> Internet access is required to obtain the OTel Collector program.
+
 At a high level, you will download a small Collector application, add simple config files to both the Collector and Uptime, start the Collector, use Uptime to find a .NET PID running on your system (you must provide that app), and start Uptime pointing to that PID. The Collector will begin streaming all metrics from that app to the console.
 
 ## Local push-telemetry test (OTLP → OpenTelemetry Collector)

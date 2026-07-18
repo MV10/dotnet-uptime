@@ -1,22 +1,22 @@
 # dotnet-uptime
 
-Uptime is a cross-platform .NET diagnostics collection and telemetry utility supporting enterprise-style stability-focused observability, monitoring, alerting, and triage for _all_ .NET processes running on a given host. It runs as a Windows Service or a Linux service (systemd or SysV Init). MacOS is not supported. It is similar to a continuously-running version of the standard [`dotnet-counters`](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-counters) utility with output available to [OpenTelemetry](https://opentelemetry.io/) (aka "OTel") OTLP collectors or Prometheus HTTP.
+Uptime is a cross-platform .NET diagnostics collection and telemetry utility supporting enterprise-style stability-focused observability, monitoring, alerting, and triage for _all_ .NET processes running on a given host. It runs as a Windows Service or a Linux service (systemd or SysV Init). MacOS is not supported. It is similar to a continuously-running version of the standard [`dotnet-counters`](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-counters) utility with output available to [OpenTelemetry](https://opentelemetry.io/) (aka "OTel") OTLP collectors.
 
-Critically, diagnostic metrics can be collected from every .NET application without making _any_ changes to the monitored applications, including vendor or other third-party applications where you usually can't obtain the source code. Without Uptime, each and every individual application would need to deal with a variety of complex issues to expose the same data. Uptime is designed to be a fire-and-forget service that can be distributed broadly to many thousands of servers.
+Critically, diagnostic metrics can be collected from every .NET application without making _any_ changes to the monitored applications, including vendor or other third-party applications where you usually can't obtain the source code. Without Uptime, each and every individual application would need to deal with a variety of complex issues to expose the same data. Uptime is designed to be an easily-configured fire-and-forget service that can be distributed broadly to many thousands of servers.
 
-The service continuously scans for new "eligible" processes, and various name and command line pattern-matching rules control which processes are actually monitored. Several interactive features are available for testing and experimenting. It supports Linux-hosted containers: run it on the underlying host, metrics are tagged with the host PID, the 64-character container ID, and the PID inside the container. Uptime probably will not find processes running in Windows-hosted containers: routed diagnostic ports are not currently supported, and that's typically how container diagnostics are surfaced on Windows.
+The service continuously scans for new "eligible" processes, and various name and command line pattern-matching rules control which processes are actually monitored. Several interactive features are available for testing and experimenting. It supports Linux-hosted containers: run it on the underlying host, metrics are tagged with the host PID, the 64-character container ID, and the PID inside the container. Uptime probably will not find processes running in Windows-hosted containers: routed diagnostic ports are not currently supported, and that's typically how container diagnostics are surfaced on Windows. For local developer scenarios, output via Prometheus HTTP is also supported.
 
 Uptime only supports processes running under .NET 8 or newer. For a list of available metrics, refer to Microsoft's [Built-in Metrics in .NET](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics) documentation. Anything listed under "Older Metrics" is legacy and is not supported by Uptime. 
 
 ## Installation and Usage
 
-Each [release](https://github.com/MV10/dotnet-uptime/releases) offers Windows and Linux versions packaged two ways. The "self-contained deployment" (scd) builds are single files which are ready to use as soon as you download it (other than configuration). The "framework-dependent" (fx) builds require a machine-wide installation of the .NET runtime. Both versions work identically once installed.
+Each [release](https://github.com/MV10/dotnet-uptime/releases) offers Windows and Linux versions packaged two ways. The "self-contained deployment" (scd) builds are single files which are ready to use as soon as you unarchive the files. The smaller "framework-dependent" (fx) builds require a machine-wide installation of the .NET runtime. Both versions work identically once installed and configured.
 
-Uptime can simply be unarchived into to any directory, then create a configuration file at that same location (refer to the [_Configuration_](https://github.com/MV10/dotnet-uptime#configuration) section below).
+The application can be unarchived into to any directory. Although it will run interactively without configuration, running it as a service requires creating a configuration file. Refer to the [_Configuration_](https://github.com/MV10/dotnet-uptime#configuration) section for details.
 
 ### Local-Machine Testing
 
-The repository document [`testing.md`](https://github.com/MV10/dotnet-uptime/blob/master/testing.md) explains how to test the application on Windows or Linux without installing it as a service.
+The repository document [`testing.md`](https://github.com/MV10/dotnet-uptime/blob/master/testing.md) explains how to quickly and easily test the application. 
 
 ### Interactive Commands
 
