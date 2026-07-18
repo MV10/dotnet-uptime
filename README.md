@@ -30,21 +30,97 @@ Commands:
 
 ## Installation
 
-Uptime can be installed anywhere (enterprise environments often keep third-party software separate from system drives or mounts). Each release offers Windows and Linux versions packaged two ways. The "self-contained deployment" (scd) builds are single files which are ready to use as soon as you download it (other than configuration). The "framework-dependent" (fx) builds require a machine-wide installation of the .NET runtime. Both versions work identically once installed.
+Each [release](https://github.com/MV10/dotnet-uptime/releases) offers Windows and Linux versions packaged two ways. The "self-contained deployment" (scd) builds are single files which are ready to use as soon as you download it (other than configuration). The "framework-dependent" (fx) builds require a machine-wide installation of the .NET runtime. Both versions work identically once installed. 
 
-You must manually create a configuration file (refer to the _Configuration_ section below).
+Uptime can simply be unarchived into to any directory, then create a configuration file at that same location (refer to the _Configuration_ section below). 
 
-### Install as Windows Service
+To run Uptime as a service, register the executable with your platform's service manager.
 
-> WIP (working but documentation TODO)
+> In the examples below, replace `<install-dir>` with the directory where you deployed the application and configuration files.
 
-### Install as Linux systemd Service
+### Windows Service
 
-> WIP (working but documentation TODO)
+From an elevated command prompt, create and start the service (note the required space after each `=`):
 
-### Install as Linux SysV Init Service
+```
+sc create dotnet-uptime binPath= "<install-dir>\dotnet-uptime.exe" start= auto
+sc start dotnet-uptime
+```
 
-> WIP (working but documentation TODO)
+To stop and remove it:
+
+```
+sc stop dotnet-uptime
+sc delete dotnet-uptime
+```
+
+### Linux systemd Service
+
+Create a `/etc/systemd/system/dotnet-uptime.service` unit file:
+
+```ini
+[Unit]
+Description=dotnet-uptime metrics service
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=<install-dir>/dotnet-uptime
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start it:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now dotnet-uptime
+```
+
+Check status and logs with `systemctl status dotnet-uptime` and `journalctl -u dotnet-uptime`.
+
+To remove it, run `sudo systemctl disable --now dotnet-uptime` and delete the unit file.
+
+### Linux SysV Init Service
+
+Create `/etc/init.d/dotnet-uptime` and make it executable (`sudo chmod +x /etc/init.d/dotnet-uptime`):
+
+```sh
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          dotnet-uptime
+# Required-Start:    $network $local_fs
+# Required-Stop:     $network $local_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: dotnet-uptime metrics service
+### END INIT INFO
+
+DAEMON=<install-dir>/dotnet-uptime
+PIDFILE=/var/run/dotnet-uptime.pid
+
+case "$1" in
+  start)
+    start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE" --exec "$DAEMON"
+    ;;
+  stop)
+    start-stop-daemon --stop --pidfile "$PIDFILE" --retry 10
+    ;;
+  restart)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+    ;;
+esac
+```
+
+Register it to start at boot with `sudo update-rc.d dotnet-uptime defaults`, then start it with `sudo service dotnet-uptime start`.
+
 
 ## Configuration
 
