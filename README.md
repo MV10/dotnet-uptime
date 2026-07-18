@@ -1,7 +1,5 @@
 # dotnet-uptime
 
-> Work In Progress
-
 Uptime is a .NET diagnostics collection and telemetry utility supporting enterprise-style stability-focused observability, monitoring, alerting, and triage for _all_ .NET processes running on a given host. It runs as a Windows Service or a Linux service (systemd or SysV Init). MacOS is not supported. It is similar to a continuously-running version of the standard [`dotnet-counters`](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-counters) utility with output pushed to [OpenTelemetry](https://opentelemetry.io/) (aka "OTel") endpoints (OTLP or Prometheus HTTP).
 
 The primary value is that diagnostics for every .NET application is automatically made available without making _any_ changes to the individual apps... including vendor and other third-party applications where you have no control over the source code. Without Uptime, each and every individual application would need to deal with a variety of complex issues to expose the same data. Uptime is designed to be a fire-and-forget service that can be distributed broadly to many thousands of servers.

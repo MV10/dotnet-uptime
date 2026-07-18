@@ -166,6 +166,15 @@ class Program
             return 1;
         }
 
+        // service mode collects metrics only to export them; without a destination
+        // there is nothing to do, so refuse to start
+        if (config.OtlpTargetNames.Count == 0 && config.HttpEndpoint is null)
+        {
+            Console.Error.WriteLine("Config error: no export endpoints defined.");
+            Console.Error.WriteLine("Service mode requires at least one [otlp] target or an [http] section.");
+            return 1;
+        }
+
         var otelCallback = new OtelMetricsCallback();
 
         var host = Host.CreateDefaultBuilder(args)
