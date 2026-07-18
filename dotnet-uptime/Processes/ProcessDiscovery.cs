@@ -11,7 +11,7 @@ namespace MV10.DotnetUptime.Processes;
 /// <summary>
 /// A helper class for finding and managing processes with a .NET diagnostics port.
 /// </summary>
-public class ProcessHandler
+public class ProcessDiscovery
 {
     private static readonly string IpcRootPath =
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? @"\\.\pipe\" : Path.GetTempPath();
@@ -28,7 +28,7 @@ public class ProcessHandler
     /// Finds processes exposing a .NET diagnostic port and updates the externally-managed list
     /// of known processes. Returns read-only lists of processes that were added or removed.
     /// </summary>
-    public (IReadOnlyList<DiagnosticProcess> AddedProcesses, IReadOnlyList<DiagnosticProcess> RemovedProcesses) Scan(Dictionary<int, DiagnosticProcess> knownProcesses, IReadOnlyDictionary<string, ProcessRule> rules = null, ProcessRuleType ruleType = default)
+    public (IReadOnlyList<DiagnosticProcess> AddedProcesses, IReadOnlyList<DiagnosticProcess> RemovedProcesses) Discover(Dictionary<int, DiagnosticProcess> knownProcesses, IReadOnlyDictionary<string, ProcessRule> rules = null, ProcessRuleType ruleType = default)
     {
         if (knownProcesses is null) throw new ArgumentNullException(nameof(knownProcesses));
 

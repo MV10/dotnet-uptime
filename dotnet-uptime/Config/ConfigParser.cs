@@ -1,6 +1,5 @@
 
 using System.Diagnostics;
-using System.Text.RegularExpressions;
 using MV10.DotnetUptime.Processes;
 
 namespace MV10.DotnetUptime;
@@ -8,7 +7,7 @@ namespace MV10.DotnetUptime;
 /// <summary>
 /// Parsed configuration from uptime.conf.
 /// </summary>
-public class UptimeConfig
+public class ConfigParser
 {
     public AppConfig App { get; } = new();
     public ProcessRuleType RuleType { get; private set; }
@@ -24,7 +23,7 @@ public class UptimeConfig
     /// <summary>
     /// Loads and parses uptime.conf from the same directory as the running executable.
     /// </summary>
-    public static UptimeConfig Load()
+    public static ConfigParser Load()
     {
         var exeDir = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
         var path = Path.Combine(exeDir, "uptime.conf");
@@ -35,9 +34,9 @@ public class UptimeConfig
     /// <summary>
     /// Parses config from lines (for testability).
     /// </summary>
-    public static UptimeConfig Parse(string[] lines)
+    public static ConfigParser Parse(string[] lines)
     {
-        var config = new UptimeConfig();
+        var config = new ConfigParser();
         var sections = ReadSections(lines);
 
         ParseAppSection(config, sections);
@@ -81,7 +80,7 @@ public class UptimeConfig
         return sections;
     }
 
-    private static void ParseAppSection(UptimeConfig config, Dictionary<string, List<string>> sections)
+    private static void ParseAppSection(ConfigParser config, Dictionary<string, List<string>> sections)
     {
         if (!sections.TryGetValue("app", out var lines)) return;
 
@@ -111,7 +110,7 @@ public class UptimeConfig
         }
     }
 
-    private static void ParseRulesSection(UptimeConfig config, Dictionary<string, List<string>> sections)
+    private static void ParseRulesSection(ConfigParser config, Dictionary<string, List<string>> sections)
     {
         bool hasInclude = sections.ContainsKey("include");
         bool hasExclude = sections.ContainsKey("exclude");
@@ -158,7 +157,7 @@ public class UptimeConfig
         config.Rules = rules;
     }
 
-    private static void ParseDiagsSection(UptimeConfig config, Dictionary<string, List<string>> sections)
+    private static void ParseDiagsSection(ConfigParser config, Dictionary<string, List<string>> sections)
     {
         if (!sections.TryGetValue("diags", out var lines) || lines.Count == 0)
         {
@@ -215,7 +214,7 @@ public class UptimeConfig
         }
     }
 
-    private static void ParseOtlpSections(UptimeConfig config, Dictionary<string, List<string>> sections)
+    private static void ParseOtlpSections(ConfigParser config, Dictionary<string, List<string>> sections)
     {
         if (!sections.TryGetValue("otlp", out var targetNames)) return;
 
@@ -264,7 +263,7 @@ public class UptimeConfig
         }
     }
 
-    private static void ParseHttpSection(UptimeConfig config, Dictionary<string, List<string>> sections)
+    private static void ParseHttpSection(ConfigParser config, Dictionary<string, List<string>> sections)
     {
         if (!sections.TryGetValue("http", out var lines)) return;
 
@@ -326,76 +325,3 @@ public class UptimeConfig
         throw new ConfigException($"{name} must be 'true' or 'false', got: {value}");
     }
 }
-
-/// <summary>
-/// Service behavior settings from [app].
-/// </summary>
-public class AppConfig
-{
-    public int ProcessScanIntervalMs { get; set; } = 15000;
-    public int DiagnosticsIntervalMs { get; set; } = 15000;
-    public int MaxHistograms { get; set; } = 10;
-    public int MaxTimeSeries { get; set; } = 1000;
-    public bool ExcludeSelf { get; set; } = true;
-}
-
-/// <summary>
-/// A diagnostic provider specification from [diags].
-/// </summary>
-public class DiagProviderSpec(string providerName, string[] counters = null, string processFilter = null)
-{
-    public string ProviderName { get; } = providerName;
-    public string[] Counters { get; } = counters;
-    public string ProcessFilter { get; } = processFilter;
-}
-
-/// <summary>
-/// OTLP push endpoint settings from a named section.
-/// </summary>
-public class OtlpEndpointConfig
-{
-    public string Endpoint { get; set; }
-    public string Protocol { get; set; } = "grpc";
-    public string RawHeader { get; set; }
-    public int TimeoutMs { get; set; } = 10000;
-
-    /// <summary>
-    /// Parses semicolon-delimited Key:Value header pairs.
-    /// </summary>
-    public Dictionary<string, string> GetHeaders()
-    {
-        var headers = new Dictionary<string, string>();
-        if (string.IsNullOrEmpty(RawHeader)) return headers;
-
-        foreach (var pair in RawHeader.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var colonIndex = pair.IndexOf(':');
-            if (colonIndex <= 0)
-                throw new ConfigException($"Invalid header format (expected Key:Value): {pair}");
-            headers[pair.Substring(0, colonIndex).Trim()] = pair.Substring(colonIndex + 1).Trim();
-        }
-
-        return headers;
-    }
-}
-
-/// <summary>
-/// HTTP scrape endpoint settings from [http].
-/// </summary>
-public class HttpEndpointConfig
-{
-    public string Type { get; set; } = "prometheus";
-    public string Endpoint { get; set; }
-}
-
-/// <summary>
-/// Thrown for config file errors; message is reported to the console.
-/// </summary>
-public class ConfigException(string message) : Exception(message);
-
-/// <summary>
-/// Thrown when uptime.conf does not exist. Interactive commands may fall back to
-/// defaults, but service mode treats this as fatal.
-/// </summary>
-public class ConfigMissingException(string path)
-    : ConfigException($"Config file not found: {path}");

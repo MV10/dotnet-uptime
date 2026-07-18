@@ -114,7 +114,7 @@ public static class DiagnosticIpc
 
     private static Stream ConnectLinux(int pid)
     {
-        string socketPath = FindDiagnosticSocket(pid);
+        var socketPath = FindDiagnosticSocket(pid);
         if (socketPath == null)
             throw new FileNotFoundException($"No diagnostic socket found for PID {pid}");
 
@@ -129,11 +129,11 @@ public static class DiagnosticIpc
     /// </summary>
     private static string FindDiagnosticSocket(int pid)
     {
-        var tmpDir = ProcessHandler.GetProcessTmpDir(pid);
+        var tmpDir = ProcessDiscovery.GetProcessTmpDir(pid);
         string searchDir;
         int searchPid;
 
-        if (ProcessHandler.TryGetNamespacePid(pid, out int nsPid))
+        if (ProcessDiscovery.TryGetNamespacePid(pid, out int nsPid))
         {
             searchDir = Path.Combine($"/proc/{pid}/root", tmpDir.TrimStart(Path.DirectorySeparatorChar));
             searchPid = nsPid;
@@ -242,7 +242,7 @@ public static class DiagnosticIpc
         index += sizeof(int);
 
         int byteCount = charCount * sizeof(char);
-        string value = Encoding.Unicode.GetString(buffer, index, byteCount).Substring(0, charCount - 1);
+        var value = Encoding.Unicode.GetString(buffer, index, byteCount).Substring(0, charCount - 1);
         index += byteCount;
         return value;
     }
@@ -253,16 +253,4 @@ public static class DiagnosticIpc
         index += sizeof(int);
         index += charCount * sizeof(char);
     }
-}
-
-/// <summary>
-/// Data returned by the runtime's GetProcessInfo IPC command.
-/// </summary>
-public class RuntimeProcessInfo
-{
-    public Guid RuntimeInstanceCookie { get; set; }
-    public string ProcessArchitecture { get; set; } = string.Empty;
-    public string ManagedEntrypointAssemblyName { get; set; } = string.Empty;
-    public string ClrProductVersionString { get; set; } = string.Empty;
-    public string PortableRuntimeIdentifier { get; set; } = string.Empty;
 }

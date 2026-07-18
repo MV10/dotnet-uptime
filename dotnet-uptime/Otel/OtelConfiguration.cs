@@ -6,7 +6,7 @@ using OpenTelemetry.Metrics;
 namespace MV10.DotnetUptime.Otel;
 
 /// <summary>
-/// Builds OpenTelemetry metrics export from UptimeConfig: named OTLP push exporters
+/// Builds OpenTelemetry metrics export from ConfigParser: named OTLP push exporters
 /// and the optional Prometheus scrape listener, for both the service host (DI) and
 /// the standalone PID-monitor mode.
 /// </summary>
@@ -16,10 +16,10 @@ static class OtelConfiguration
     /// Registers OTel metrics on the host service collection (service mode).
     /// No-op when neither an OTLP target nor an HTTP endpoint is configured.
     /// </summary>
-    public static void ConfigureOpenTelemetry(IServiceCollection services, UptimeConfig config)
+    public static void ConfigureOpenTelemetry(IServiceCollection services, ConfigParser config)
     {
-        bool hasOtlp = config.OtlpTargetNames.Count > 0;
-        bool hasHttp = config.HttpEndpoint is not null;
+        var hasOtlp = config.OtlpTargetNames.Count > 0;
+        var hasHttp = config.HttpEndpoint is not null;
         if (!hasOtlp && !hasHttp) return;
 
         services.AddOpenTelemetry()
@@ -34,7 +34,7 @@ static class OtelConfiguration
     /// <summary>
     /// Builds a standalone MeterProvider (PID-monitor mode).
     /// </summary>
-    public static MeterProvider BuildMeterProvider(UptimeConfig config)
+    public static MeterProvider BuildMeterProvider(ConfigParser config)
     {
         var builder = Sdk.CreateMeterProviderBuilder()
             .AddMeter(OtelMetricsCallback.MeterName);
@@ -45,7 +45,7 @@ static class OtelConfiguration
         return builder.Build();
     }
 
-    private static void ConfigureOtlpExporters(MeterProviderBuilder metrics, UptimeConfig config)
+    private static void ConfigureOtlpExporters(MeterProviderBuilder metrics, ConfigParser config)
     {
         foreach (var name in config.OtlpTargetNames)
         {
@@ -64,7 +64,7 @@ static class OtelConfiguration
         }
     }
 
-    private static void ConfigurePrometheus(MeterProviderBuilder metrics, UptimeConfig config)
+    private static void ConfigurePrometheus(MeterProviderBuilder metrics, ConfigParser config)
     {
         if (config.HttpEndpoint is null) return;
 

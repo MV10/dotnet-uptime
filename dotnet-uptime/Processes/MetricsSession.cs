@@ -36,13 +36,13 @@ public class MetricsSession : IDisposable
     public int PID => pid;
     public bool IsRunning => processingTask is not null && !processingTask.IsCompleted;
 
-    public MetricsSession(int pid, IMetricsCallback callback, UptimeConfig config)
+    public MetricsSession(int pid, IMetricsCallback callback, ConfigParser config)
     {
         this.pid = pid;
         // a differing namespace PID means the process runs in a container
-        if (ProcessHandler.TryGetNamespacePid(pid, out int nsPid))
+        if (ProcessDiscovery.TryGetNamespacePid(pid, out int nsPid))
             containerPid = nsPid;
-        containerId = ProcessHandler.GetContainerId(pid);
+        containerId = ProcessDiscovery.GetContainerId(pid);
         this.callback = callback;
         providers = config.DiagProviders;
         intervalSeconds = config.App.DiagnosticsIntervalMs / 1000;

@@ -43,10 +43,10 @@ class Program
 
     static void ListProcesses(bool verbose)
     {
-        UptimeConfig config = null;
+        ConfigParser config = null;
         try
         {
-            config = UptimeConfig.Load();
+            config = ConfigParser.Load();
         }
         catch (ConfigMissingException)
         {
@@ -59,12 +59,12 @@ class Program
         }
 
         var procs = new Dictionary<int, DiagnosticProcess>();
-        var handler = new ProcessHandler();
+        var handler = new ProcessDiscovery();
 
         if (config is not null && config.Rules.Count > 0)
-            handler.Scan(procs, config.Rules, config.RuleType);
+            handler.Discover(procs, config.Rules, config.RuleType);
         else
-            handler.Scan(procs);
+            handler.Discover(procs);
 
         if (procs.Count == 0)
         {
@@ -102,15 +102,15 @@ class Program
             return 1;
         }
 
-        UptimeConfig config;
+        ConfigParser config;
         try
         {
-            config = UptimeConfig.Load();
+            config = ConfigParser.Load();
         }
         catch (ConfigMissingException)
         {
             // no config file: monitor with built-in defaults (console output, no exporters)
-            config = UptimeConfig.Parse(Array.Empty<string>());
+            config = ConfigParser.Parse(Array.Empty<string>());
         }
         catch (ConfigException ex)
         {
@@ -152,10 +152,10 @@ class Program
 
     static int RunService(string[] args)
     {
-        UptimeConfig config;
+        ConfigParser config;
         try
         {
-            config = UptimeConfig.Load();
+            config = ConfigParser.Load();
         }
         catch (ConfigException ex)
         {

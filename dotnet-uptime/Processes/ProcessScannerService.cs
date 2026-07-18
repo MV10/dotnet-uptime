@@ -11,7 +11,7 @@ public class ProcessScannerService : BackgroundService
     private readonly ProcessManager manager;
     private readonly int intervalMs;
 
-    public ProcessScannerService(ProcessManager manager, UptimeConfig config)
+    public ProcessScannerService(ProcessManager manager, ConfigParser config)
     {
         this.manager = manager;
         intervalMs = config.App.ProcessScanIntervalMs;

@@ -9,12 +9,12 @@ public class ProcessManager
 {
     private readonly Dictionary<int, ManagedProcess> processes = new();
     private readonly Dictionary<int, DiagnosticProcess> knownProcesses = new();
-    private readonly ProcessHandler handler = new();
-    private readonly UptimeConfig config;
+    private readonly ProcessDiscovery discovery = new();
+    private readonly ConfigParser config;
     private readonly IMetricsCallback metricsCallback;
     private readonly object syncLock = new();
 
-    public ProcessManager(UptimeConfig config, IMetricsCallback callback)
+    public ProcessManager(ConfigParser config, IMetricsCallback callback)
     {
         this.config = config;
         metricsCallback = callback;
@@ -24,7 +24,7 @@ public class ProcessManager
     {
         lock (syncLock)
         {
-            var (added, removed) = handler.Scan(
+            var (added, removed) = discovery.Discover(
                 knownProcesses,
                 config.Rules.Count > 0 ? config.Rules : null,
                 config.RuleType);
