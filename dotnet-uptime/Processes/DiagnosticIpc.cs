@@ -127,7 +127,7 @@ public static class DiagnosticIpc
     /// Locates the diagnostic Unix socket file for a PID, handling
     /// TMPDIR and cross-namespace scenarios.
     /// </summary>
-    private static string FindDiagnosticSocket(int pid)
+    internal static string FindDiagnosticSocket(int pid)
     {
         var tmpDir = ProcessDiscovery.GetProcessTmpDir(pid);
         string searchDir;

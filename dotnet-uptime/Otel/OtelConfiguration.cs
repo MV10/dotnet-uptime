@@ -16,7 +16,7 @@ static class OtelConfiguration
     /// Registers OTel metrics on the host service collection (service mode).
     /// No-op when neither an OTLP target nor an HTTP endpoint is configured.
     /// </summary>
-    public static void ConfigureOpenTelemetry(IServiceCollection services, ConfigParser config)
+    public static void ConfigureOpenTelemetry(IServiceCollection services, ConfigParser config, int exportIntervalMs)
     {
         var hasOtlp = config.OtlpTargetNames.Count > 0;
         var hasHttp = config.HttpEndpoint is not null;
@@ -26,7 +26,7 @@ static class OtelConfiguration
             .WithMetrics(metrics =>
             {
                 metrics.AddMeter(OtelMetricsCallback.MeterName);
-                ConfigureOtlpExporters(metrics, config);
+                ConfigureOtlpExporters(metrics, config, exportIntervalMs);
                 ConfigurePrometheus(metrics, config);
             });
     }
@@ -34,23 +34,29 @@ static class OtelConfiguration
     /// <summary>
     /// Builds a standalone MeterProvider (PID-monitor mode).
     /// </summary>
-    public static MeterProvider BuildMeterProvider(ConfigParser config)
+    public static MeterProvider BuildMeterProvider(ConfigParser config, int exportIntervalMs)
     {
         var builder = Sdk.CreateMeterProviderBuilder()
             .AddMeter(OtelMetricsCallback.MeterName);
 
-        ConfigureOtlpExporters(builder, config);
+        ConfigureOtlpExporters(builder, config, exportIntervalMs);
         ConfigurePrometheus(builder, config);
 
         return builder.Build();
     }
 
-    private static void ConfigureOtlpExporters(MeterProviderBuilder metrics, ConfigParser config)
+    /// <summary>
+    /// Registers each named OTLP push exporter. The export interval is set to match
+    /// the counter collection interval so every collected value is pushed exactly
+    /// once (values are last-value gauges, so pushing more or less often than we
+    /// collect would re-send stale values or drop collected ones).
+    /// </summary>
+    private static void ConfigureOtlpExporters(MeterProviderBuilder metrics, ConfigParser config, int exportIntervalMs)
     {
         foreach (var name in config.OtlpTargetNames)
         {
             var endpoint = config.OtlpEndpoints[name];
-            metrics.AddOtlpExporter(name, options =>
+            metrics.AddOtlpExporter(name, (options, reader) =>
             {
                 options.Endpoint = new Uri(endpoint.Endpoint);
                 options.Protocol = endpoint.Protocol == "http"
@@ -60,6 +66,8 @@ static class OtelConfiguration
                 var headers = endpoint.GetHeaders();
                 if (headers.Count > 0)
                     options.Headers = string.Join(",", headers.Select(h => $"{h.Key}={h.Value}"));
+
+                reader.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = exportIntervalMs;
             });
         }
     }

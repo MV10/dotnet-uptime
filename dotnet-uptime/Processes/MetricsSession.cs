@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
@@ -76,7 +77,7 @@ public class MetricsSession : IDisposable
     {
         try
         {
-            var client = new DiagnosticsClient(pid);
+            var client = CreateClient();
 
             var pipeProviders = BuildEventPipeProviders(client);
             session = client.StartEventPipeSession(pipeProviders, requestRundown: false);
@@ -99,6 +100,29 @@ public class MetricsSession : IDisposable
         {
             callback.OnSessionEnded(pid);
         }
+    }
+
+    /// <summary>
+    /// Builds a DiagnosticsClient for the target process. On Linux the diagnostic
+    /// socket is resolved explicitly so processes in a container (whose socket lives
+    /// under the container's /tmp and is named with the namespace PID) can be reached;
+    /// the library's pid constructor only looks for a host-PID socket in the host /tmp.
+    /// </summary>
+    private DiagnosticsClient CreateClient()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            return new DiagnosticsClient(pid);
+
+        var socketPath = DiagnosticIpc.FindDiagnosticSocket(pid);
+        if (socketPath is null)
+            throw new FileNotFoundException($"No diagnostic socket found for PID {pid}");
+
+        // ",connect" is required: a bare path parses as Listen mode, which would
+        // wait for the runtime to connect to us instead of connecting to its socket
+        return DiagnosticsClientConnector
+            .FromDiagnosticPort($"{socketPath},connect", cts.Token)
+            .GetAwaiter().GetResult()
+            .Instance;
     }
 
     private List<EventPipeProvider> BuildEventPipeProviders(DiagnosticsClient client)

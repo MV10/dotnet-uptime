@@ -118,15 +118,29 @@ class Program
             return 1;
         }
 
+        // OTLP export stays at the configured interval; only the console collection
+        // rate is sped up below, so capture the configured value first
+        int otlpExportIntervalMs = config.App.DiagnosticsIntervalMs;
+
+        // interactive monitoring always collects on a 1-second interval for responsive
+        // console output, regardless of the configured (service-oriented) interval
+        config.App.DiagnosticsIntervalMs = 1000;
+
         Console.WriteLine($"Monitoring PID {pid} ({runtimeInfo.ManagedEntrypointAssemblyName}), press Ctrl+C to stop.");
         Console.WriteLine();
 
+        using var cts = new CancellationTokenSource();
+
         using var otelCallback = new OtelMetricsCallback();
-        var callback = new CompositeMetricsCallback(new ConsoleMetricsCallback(), otelCallback);
-        using var meterProvider = OtelConfiguration.BuildMeterProvider(config);
+        // the monitored process exiting ends the session; cancel so we exit
+        // instead of blocking on Ctrl+C
+        var callback = new CompositeMetricsCallback(
+            new ConsoleMetricsCallback(),
+            otelCallback,
+            new SessionEndedCallback(() => cts.Cancel()));
+        using var meterProvider = OtelConfiguration.BuildMeterProvider(config, otlpExportIntervalMs);
 
         using var session = new MetricsSession(pid, callback, config);
-        using var cts = new CancellationTokenSource();
 
         Console.CancelKeyPress += (_, e) =>
         {
@@ -142,7 +156,7 @@ class Program
         }
         catch (AggregateException ex) when (ex.InnerException is TaskCanceledException)
         {
-            // Ctrl+C
+            // Ctrl+C or the monitored process exited
         }
 
         session.Stop();
@@ -187,7 +201,7 @@ class Program
                 services.AddSingleton<IMetricsCallback>(otelCallback);
                 services.AddSingleton<ProcessManager>();
                 services.AddHostedService<ProcessScannerService>();
-                OtelConfiguration.ConfigureOpenTelemetry(services, config);
+                OtelConfiguration.ConfigureOpenTelemetry(services, config, config.App.DiagnosticsIntervalMs);
             })
             .Build();
 
@@ -240,4 +254,22 @@ class ConsoleMetricsCallback : IMetricsCallback
     {
         Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] Session ended for PID {pid}");
     }
+}
+
+/// <summary>
+/// Invokes an action when the monitored session ends, used by interactive mode
+/// to stop waiting once the target process exits.
+/// </summary>
+class SessionEndedCallback : IMetricsCallback
+{
+    private readonly Action onSessionEnded;
+
+    public SessionEndedCallback(Action onSessionEnded)
+    {
+        this.onSessionEnded = onSessionEnded;
+    }
+
+    public void OnCounterPayload(int pid, CounterPayload payload) { }
+
+    public void OnSessionEnded(int pid) => onSessionEnded();
 }

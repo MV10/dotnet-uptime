@@ -29,7 +29,7 @@ Commands:
   (none)        Run as a service (normal operation)
   list          Show eligible .NET processes with full details
   procs         Show eligible .NET processes (PID and command line only)
-  <PID>         Monitor a single process (console + OTel output)
+  <PID>         Monitor a single process (console + OTel output, 1 second interval)
   version       Show program version
   help          Show this help message
 ```
@@ -136,13 +136,15 @@ Config defines process polling frequency, OTel endpoint details, process include
 
 The `[app]` section contains settings that control overall application behavior.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
+| Setting | Default | Description                                                                  |
+|---------|---------|---|
 | `pscan` | 15000 | Process scan interval, milliseconds |
-| `diags` | 15000 | Counter reporting interval, milliseconds |
+| `diags` | 15000 | Counter collection interval, milliseconds |
 | `maxhistograms` | 10 | Max histogram instruments tracked per process |
 | `maxtimeseries` | 1000 | Max time series tracked per process |
 | `excludeself` | true | When true, `dotnet-uptime` excludes its own PID from monitoring |
+
+Note that the `diags` counter collection interval is _also_ the interval at which OTLP collectors are updated (data is pushed). When running in interactive mode monitoring a specific PID (console output), the rate is always 1 second, but any configured OTLP collection will continue at the configured rate. Collectors are expected to downsample to whatever data they actually wish to process and store.
 
 ### [include] and [exclude] Config Sections
 
