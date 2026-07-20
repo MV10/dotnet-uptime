@@ -127,18 +127,19 @@ public class ConfigParser
 
         foreach (var line in lines)
         {
-            // format: filename [specifier_regex]
+            // format: filename[: specifier_regex] - everything after the first colon is
+            // the regex (which may itself contain colons); an app name with a colon
+            // therefore cannot be referenced, but that is vanishingly rare
             string filename;
             string regex = null;
 
-            var bracketStart = line.IndexOf('[');
-            if (bracketStart >= 0)
+            var colonIndex = line.IndexOf(':');
+            if (colonIndex >= 0)
             {
-                var bracketEnd = line.IndexOf(']', bracketStart);
-                if (bracketEnd < 0)
-                    throw new ConfigException($"Unclosed bracket in rule: {line}");
-                filename = line.Substring(0, bracketStart).Trim();
-                regex = line.Substring(bracketStart + 1, bracketEnd - bracketStart - 1).Trim();
+                filename = line.Substring(0, colonIndex).Trim();
+                regex = line.Substring(colonIndex + 1).Trim();
+                if (string.IsNullOrEmpty(regex))
+                    throw new ConfigException($"Empty specifier regex in [{sectionName}] rule: {line}");
             }
             else
             {
