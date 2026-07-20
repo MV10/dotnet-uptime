@@ -39,6 +39,16 @@ public class DiagProviderSpec
     }
 
     /// <summary>
+    /// Whether this spec applies to a process with the given executable filename. Specs
+    /// without a process filter apply to every process.
+    /// </summary>
+    public bool MatchesProcess(string filename)
+    {
+        if (string.IsNullOrEmpty(ProcessFilter)) return true;
+        return string.Equals(ProcessFilter, filename, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Whether this spec's provider name matches the given meter/provider name, honoring wildcards.
     /// </summary>
     public bool MatchesProvider(string name)

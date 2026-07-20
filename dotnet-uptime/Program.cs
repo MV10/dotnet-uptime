@@ -155,7 +155,9 @@ class Program
             new SessionEndedCallback(() => cts.Cancel()));
         using var meterProvider = OtelConfiguration.BuildMeterProvider(config, otlpExportIntervalMs);
 
-        using var session = new MetricsSession(pid, callback, config);
+        // interactive single-PID monitoring: pass null so [diags] process filters are
+        // ignored and every configured provider applies to the chosen process
+        using var session = new MetricsSession(pid, null, callback, config);
 
         Console.CancelKeyPress += (_, e) =>
         {

@@ -63,7 +63,7 @@ public class ProcessManager
 
     private void StartSession(DiagnosticProcess proc)
     {
-        var session = new MetricsSession(proc.PID, metricsCallback, config);
+        var session = new MetricsSession(proc.PID, proc.Filename, metricsCallback, config);
         processes[proc.PID] = new ManagedProcess(proc, session);
         session.Start();
     }

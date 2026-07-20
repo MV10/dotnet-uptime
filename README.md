@@ -175,7 +175,13 @@ Microsoft.AspNetCore.Hosting: w3wp.exe       # all counters, only from w3wp.exe
 System.Net.*                                 # every meter under the System.Net namespace
 ```
 
-Wildcards are convenient but not free: a wildcard subscribes to _all_ meters in the target process, and non-matching data is discarded after collection rather than being filtered at the source. Prefer explicit provider names where the set is known.
+Wildcards are convenient but not free: a wildcard subscribes to _all_ meters in the target process, and non-matching data is discarded after collection rather than being filtered at the source. Prefer explicit provider names where the set is known. The per-provider process filter (the executable name after the colon) is the best way to bound this cost, since it limits a wildcard to only the processes that need it:
+
+```
+System.Net.*: w3wp.exe                       # every System.Net meter, only from w3wp.exe
+```
+
+The process filter is enforced only during service-mode scanning, where Uptime chooses which discovered processes get which providers. Interactive single-PID monitoring (`dotnet-uptime <PID>`) ignores process filters and applies every configured provider to the chosen process, since you have already selected exactly one target.
 
 ### [otlp] Config Section
 

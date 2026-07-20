@@ -37,7 +37,9 @@ public class MetricsSession : IDisposable
     public int PID => pid;
     public bool IsRunning => processingTask is not null && !processingTask.IsCompleted;
 
-    public MetricsSession(int pid, IMetricsCallback callback, ConfigParser config)
+    // processFilename gates per-provider process filters from [diags]; pass null (interactive
+    // single-PID monitoring) to ignore those filters and apply every configured provider
+    public MetricsSession(int pid, string processFilename, IMetricsCallback callback, ConfigParser config)
     {
         this.pid = pid;
         // a differing namespace PID means the process runs in a container
@@ -45,7 +47,9 @@ public class MetricsSession : IDisposable
             containerPid = nsPid;
         containerId = ProcessDiscovery.GetContainerId(pid);
         this.callback = callback;
-        providers = config.DiagProviders;
+        providers = processFilename is null
+            ? config.DiagProviders
+            : config.DiagProviders.Where(spec => spec.MatchesProcess(processFilename)).ToList();
         intervalSeconds = config.App.DiagnosticsIntervalMs / 1000;
         if (intervalSeconds < 1) intervalSeconds = 1;
         maxHistograms = config.App.MaxHistograms;
