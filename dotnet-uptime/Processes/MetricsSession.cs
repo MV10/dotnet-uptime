@@ -129,10 +129,20 @@ public class MetricsSession : IDisposable
     {
         var pipeProviders = new List<EventPipeProvider>();
         var meterNames = new List<string>();
+        var hasWildcard = false;
 
         foreach (var spec in providers)
         {
-            // every provider gets an EventCounters subscription (legacy path)
+            // wildcards apply only to modern meters, subscribed via the "*" Metrics argument
+            // below; legacy EventCounter providers must be named exactly, so there is no
+            // per-provider subscription to add for a wildcard spec
+            if (spec.IsWildcard)
+            {
+                hasWildcard = true;
+                continue;
+            }
+
+            // every literal provider gets an EventCounters subscription (legacy path)
             pipeProviders.Add(new EventPipeProvider(
                 spec.ProviderName,
                 EventLevel.Informational,
@@ -144,6 +154,10 @@ public class MetricsSession : IDisposable
 
             meterNames.Add(spec.ProviderName);
         }
+
+        // a wildcard enables all meters in the target; unmatched meters are dropped later
+        // by IsCounterIncluded (there is no prefix syntax in the runtime's Metrics argument)
+        var metricsArgument = hasWildcard ? "*" : string.Join(',', meterNames);
 
         // add the System.Diagnostics.Metrics provider for modern meters
         // shared sessions available on .NET 8+; always request it
@@ -158,7 +172,7 @@ public class MetricsSession : IDisposable
             new Dictionary<string, string>
             {
                 ["SessionId"] = sessionId,
-                ["Metrics"] = string.Join(',', meterNames),
+                ["Metrics"] = metricsArgument,
                 ["RefreshInterval"] = intervalSeconds.ToString(CultureInfo.InvariantCulture),
                 ["MaxTimeSeries"] = maxTimeSeries.ToString(CultureInfo.InvariantCulture),
                 ["MaxHistograms"] = maxHistograms.ToString(CultureInfo.InvariantCulture),
@@ -333,7 +347,7 @@ public class MetricsSession : IDisposable
     {
         foreach (var spec in providers)
         {
-            if (!string.Equals(spec.ProviderName, providerName, StringComparison.OrdinalIgnoreCase))
+            if (!spec.MatchesProvider(providerName))
                 continue;
 
             // process filter is checked at session creation, not here
@@ -346,7 +360,10 @@ public class MetricsSession : IDisposable
                     return true;
             }
 
-            return false;
+            // a literal provider match with a non-matching counter list is authoritative;
+            // a wildcard match is not, so keep scanning in case a later spec includes it
+            if (!spec.IsWildcard)
+                return false;
         }
 
         return false;

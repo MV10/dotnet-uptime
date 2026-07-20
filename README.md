@@ -165,12 +165,17 @@ w3wp.exe: -ap """"(?<Specifier>DefaultAppPool)""""
 
 The `[diags]` section lists diagnostics providers to collect. Each entry is a provider name, optionally followed by `[counter1,counter2]` to select specific counters (omit the list to collect all counters). An optional executable name can be added following a colon, which means those metrics are only collected for matching processes. If this section is missing or empty, defaults to `System.Runtime` (all counters for every monitored process).
 
+A provider name may end with `.*` to match a namespace prefix, or be a bare `*` to match every meter. A prefix wildcard also matches the namespace root itself, so `System.Net.*` collects `System.Net` as well as `System.Net.Http`, `System.Net.NameResolution`, and so on. Wildcards apply to modern `System.Diagnostics.Metrics` meters only, not to legacy EventCounter providers, which must be named exactly.
+
 ```
 [diags]
 System.Runtime                               # all counters, all processes
 System.Runtime[cpu-usage,gc-heap-size]       # specific counters, all processes
 Microsoft.AspNetCore.Hosting: w3wp.exe       # all counters, only from w3wp.exe
+System.Net.*                                 # every meter under the System.Net namespace
 ```
+
+Wildcards are convenient but not free: a wildcard subscribes to _all_ meters in the target process, and non-matching data is discarded after collection rather than being filtered at the source. Prefer explicit provider names where the set is known.
 
 ### [otlp] Config Section
 
