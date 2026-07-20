@@ -26,13 +26,15 @@ The following commands can be run interactively from a console, over SSH, etc:
 Usage: dotnet-uptime [command]
 
 Commands:
-  (none)        Run as a service (normal operation)
+  (none)        Run as a service (on Windows, permissions limitations may apply)
   list          Show eligible .NET processes with full details
   procs         Show eligible .NET processes (PID and command line only)
   <PID>         Monitor a single process (console + OTel output, 1 second interval)
   version       Show program version
   help          Show this help message
 ```
+
+Invoking the program without a command runs in service mode. However, on Windows the program will inherit your account's permissions. If your account does not have elevated permissions (usually this means Administrator), the program will not be able to monitor any elevated processes. This is probably fine for testing, but for normal use, see below to correctly install the program as a Windows Service, where it will run with elevated rights. No such concerns apply to usage on Linux.
 
 ### Windows Service
 
@@ -41,7 +43,7 @@ Commands:
 From an elevated command prompt, create and start the service (note the required space after each `=`):
 
 ```
-sc create dotnet-uptime binPath= "<install-dir>\dotnet-uptime.exe" start= auto
+sc create dotnet-uptime binPath= "<install-dir>\dotnet-uptime.exe" start= delayed-auto
 sc start dotnet-uptime
 ```
 
@@ -144,7 +146,7 @@ The `[app]` section contains settings that control overall application behavior.
 | `maxtimeseries` | 1000 | Max time series tracked per process |
 | `excludeself` | true | When true, `dotnet-uptime` excludes its own PID from monitoring |
 
-Note that the `diags` counter collection interval is _also_ the interval at which OTLP collectors are updated (data is pushed). When running in interactive mode monitoring a specific PID (console output), the rate is always 1 second, but any configured OTLP collection will continue at the configured rate. Collectors are expected to downsample to whatever data they actually wish to process and store.
+Note that the `diags` counter collection interval is _also_ the interval at which data is pushed to OTLP collectors. When running in interactive mode monitoring a specific PID (console output), the rate is always 1 second, but any configured OTLP collection will continue at the configured rate. Collectors are expected to downsample to whatever data they actually wish to process and store.
 
 ### [include] and [exclude] Config Sections
 

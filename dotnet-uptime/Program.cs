@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Logging;
 using MV10.DotnetUptime.Otel;
 using MV10.DotnetUptime.Processes;
@@ -12,7 +13,21 @@ class Program
     static int Main(string[] args)
     {
         if (args.Length == 0)
+        {
+            // On Windows, running with no args outside the SCM (e.g. for testing) is
+            // allowed, but such a process only has the launching user's privileges.
+            // Attaching to elevated (admin/LocalSystem) targets requires this process
+            // to be elevated too, which normally comes from the SCM starting the service.
+            if (OperatingSystem.IsWindows() && !WindowsServiceHelpers.IsWindowsService())
+            {
+                Console.Error.WriteLine("Warning: not started by the Windows Service Control Manager (sc start).");
+                Console.Error.WriteLine("Running with the current user's privileges; elevated processes cannot be");
+                Console.Error.WriteLine("monitored unless this process is also elevated (run as administrator).");
+                Console.Error.WriteLine();
+            }
+
             return RunService(args);
+        }
 
         switch (args[0].ToLowerInvariant())
         {
