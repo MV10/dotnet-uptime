@@ -6,7 +6,7 @@ Critically, diagnostic metrics can be collected from every .NET application with
 
 The service continuously scans for new "eligible" processes, and various name and command line pattern-matching rules control which processes are actually monitored. Several interactive features are available for testing and experimenting. It supports containers. On Windows these are simply named-pipes. For Linux, run it on the underlying host, metrics are tagged with the host PID, the 64-character container ID, and the PID inside the container. Routed diagnostic ports (via `dotnet-dsrouter`) are not supported, they provide TCP bridging to expose data from mobile platforms (iOS, Android, etc), which are not supported by Uptime. For local developer scenarios, output via Prometheus HTTP is also supported.
 
-Uptime only supports processes running under .NET 8 or newer. For a list of available metrics, refer to Microsoft's [Built-in Metrics in .NET](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics) documentation. Anything listed under "Older Metrics" is legacy and is not supported by Uptime. 
+Uptime only supports processes running under .NET 8 or newer. For a list of available metrics, refer to Microsoft's [Built-in Metrics in .NET](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics) documentation. Anything listed under "Older Metrics" is legacy. Older `EventCounter` metrics are also supported (they are obsolete as of .NET 6, but haven't been fully replaced yet), but .NET Framework PerfMon counters are not supported by Uptime. 
 
 ## Installation and Usage
 
@@ -34,7 +34,7 @@ Commands:
   help          Show this help message
 ```
 
-Invoking the program without a command runs in service mode. However, on Windows the program will inherit your account's permissions. If your account does not have elevated permissions (usually this means Administrator), the program will not be able to monitor any elevated processes. This is probably fine for testing, but for normal use, see below to correctly install the program as a Windows Service, where it will run with elevated rights. No such concerns apply to usage on Linux.
+Invoking the program without a command runs in service mode. On Windows the program will inherit your account's permissions. If your account does not have elevated permissions (usually this means Administrator), the program will not be able to monitor any elevated processes. This is probably fine for testing, but for normal use, see below to correctly install the program as a dedicated Windows Service, where it will run with elevated rights. No such concerns apply to usage on Linux.
 
 ### Windows Service
 

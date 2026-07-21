@@ -237,7 +237,7 @@ class Program
         Console.WriteLine(@"Usage: dotnet-uptime [command]
 
 Commands:
-  (none)        Run as a service (normal operation)
+  (none)        Run as a service (on Windows, permissions limitations may apply)
   list          Show eligible .NET processes with full details
   procs         Show eligible .NET processes (PID and command line only)
   <PID>         Monitor a single process (console + OTel output)
