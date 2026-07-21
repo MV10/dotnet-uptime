@@ -156,9 +156,20 @@ class Program
             new SessionEndedCallback(() => cts.Cancel()));
         using var meterProvider = OtelConfiguration.BuildMeterProvider(config, otlpExportIntervalMs);
 
+        // [processtags] needs the discovered process, which GetProcessInfo does not
+        // supply (no filename, path or command line), so look it up once at startup
+        IReadOnlyList<KeyValuePair<string, string>> processTags = Array.Empty<KeyValuePair<string, string>>();
+        if (config.ProcessTagNames.Count > 0)
+        {
+            var discovered = new Dictionary<int, DiagnosticProcess>();
+            new ProcessDiscovery().Discover(discovered);
+            if (discovered.TryGetValue(pid, out var proc))
+                processTags = ProcessTagBuilder.Build(proc, config.ProcessTagNames);
+        }
+
         // interactive single-PID monitoring: pass null so [diags] process filters are
         // ignored and every configured provider applies to the chosen process
-        using var session = new MetricsSession(pid, null, callback, config);
+        using var session = new MetricsSession(pid, null, callback, config, processTags);
 
         Console.CancelKeyPress += (_, e) =>
         {
@@ -282,6 +293,18 @@ class Program
             var counters = provider.Counters is null ? "" : $"[{string.Join(",", provider.Counters)}]";
             var filter = string.IsNullOrEmpty(provider.ProcessFilter) ? "" : $": {provider.ProcessFilter}";
             Console.WriteLine($"  {provider.ProviderName}{counters}{filter}");
+        }
+
+        Console.WriteLine();
+        if (config.ProcessTagNames.Count == 0)
+        {
+            Console.WriteLine("Process tags: none");
+        }
+        else
+        {
+            Console.WriteLine("Process tags:");
+            foreach (var name in config.ProcessTagNames)
+                Console.WriteLine($"  {name} -> {ProcessTagBuilder.AttributeName(name)}");
         }
 
         Console.WriteLine();

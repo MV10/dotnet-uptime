@@ -21,6 +21,7 @@ public class MetricsSession : IDisposable
     private readonly int pid;
     private readonly int? containerPid;
     private readonly string containerId;
+    private readonly IReadOnlyList<KeyValuePair<string, string>> processTags;
     private readonly IMetricsCallback callback;
     private readonly List<DiagProviderSpec> providers;
     private readonly int intervalSeconds;
@@ -39,9 +40,11 @@ public class MetricsSession : IDisposable
 
     // processFilename gates per-provider process filters from [diags]; pass null (interactive
     // single-PID monitoring) to ignore those filters and apply every configured provider
-    public MetricsSession(int pid, string processFilename, IMetricsCallback callback, ConfigParser config)
+    public MetricsSession(int pid, string processFilename, IMetricsCallback callback, ConfigParser config,
+        IReadOnlyList<KeyValuePair<string, string>> processTags = null)
     {
         this.pid = pid;
+        this.processTags = processTags ?? Array.Empty<KeyValuePair<string, string>>();
         // a differing namespace PID means the process runs in a container
         if (ProcessDiscovery.TryGetNamespacePid(pid, out int nsPid))
             containerPid = nsPid;
@@ -245,7 +248,8 @@ public class MetricsSession : IDisposable
             Timestamp = traceEvent.TimeStamp,
             Kind = kind,
             ContainerPID = containerPid,
-            ContainerID = containerId
+            ContainerID = containerId,
+            ProcessTags = processTags
         });
     }
 
@@ -302,7 +306,8 @@ public class MetricsSession : IDisposable
             Tags = tags,
             Kind = kind,
             ContainerPID = containerPid,
-            ContainerID = containerId
+            ContainerID = containerId,
+            ProcessTags = processTags
         });
     }
 
@@ -348,7 +353,8 @@ public class MetricsSession : IDisposable
                 Tags = quantileTags,
                 Kind = CounterKind.Gauge,
                 ContainerPID = containerPid,
-                ContainerID = containerId
+                ContainerID = containerId,
+                ProcessTags = processTags
             });
         }
     }

@@ -63,7 +63,9 @@ public class ProcessManager
 
     private void StartSession(DiagnosticProcess proc)
     {
-        var session = new MetricsSession(proc.PID, proc.Filename, metricsCallback, config);
+        // per-process facts are constant for the session, so resolve them once here
+        var processTags = ProcessTagBuilder.Build(proc, config.ProcessTagNames);
+        var session = new MetricsSession(proc.PID, proc.Filename, metricsCallback, config, processTags);
         processes[proc.PID] = new ManagedProcess(proc, session);
         session.Start();
     }

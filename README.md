@@ -185,9 +185,39 @@ System.Net.*: w3wp.exe                       # every System.Net meter, only from
 
 The process filter is enforced only during service-mode scanning, where Uptime chooses which discovered processes get which providers. Interactive single-PID monitoring (`dotnet-uptime <PID>`) ignores process filters and applies every configured provider to the chosen process, since you have already selected exactly one target.
 
+### [processtags] Config Section
+
+The `[processtags]` section lists facts about each monitored process to emit as tags on every metric it produces. Uptime always tags metrics with the PID, but a PID is recycled and carries no meaning across restarts, so without at least `assembly` or `filename` there is no way to tell which application a series belongs to.
+
+| Name | Emitted as | Value |
+|---|---|---|
+| `assembly` | `service.name` | Managed entrypoint assembly name |
+| `filename` | `process.executable.name` | Executable filename |
+| `pathname` | `process.executable.path` | Full executable path |
+| `commandline` | `process.command_line` | Full command line, including arguments |
+| `clrversion` | `process.runtime.version` | CLR product version |
+| `arch` | `process.architecture` | Process architecture (`x64`, `arm64`, etc) |
+| `rid` | `process.runtime.rid` | Portable runtime identifier (.NET 9 and newer only) |
+| `cookie` | `process.runtime.cookie` | Runtime instance ID, which distinguishes PID reuse |
+| `specifier` | `process.specifier` | Value captured by an `[include]`/`[exclude]` rule regex |
+
+```ini
+[processtags]
+assembly
+clrversion
+```
+
+> **`commandline` exposes secrets.** Command lines routinely contain connection strings, API tokens, and passwords. Do not enable it when exporting to a third-party backend unless that backend has sanitization rules in place.
+
+Each tag must be listed explicitly. Wildcards are deliberately not supported: these values become part of every series identity, so adding one is a change that should be made on purpose rather than inherited silently from a future version that knows about more facts.
+
+These tags cost nothing in series cardinality. They are constant per process and the PID tag is already present, so they widen each existing series rather than creating new ones. Values that are unavailable on a given target (ie. no RID before .NET 9) are omitted rather than exported blank.
+
+Where a monitored application publishes a tag whose name collides with one of Uptime's, Uptime's value wins and the application's is dropped. If the two values differ, a warning is logged once per process.
+
 ### [otlp] Config Section
 
-The `[otlp]` section lists named OpenTelemetry OTLP push targets. Each name corresponds to its own config section with endpoint settings. Data is pushed to all listed targets simultaneously. Section names listed in `[otlp]` must not conflict with built-in section names (`app`, `include`, `exclude`, `diags`, `otlp`, `http`).
+The `[otlp]` section lists named OpenTelemetry OTLP push targets. Each name corresponds to its own config section with endpoint settings. Data is pushed to all listed targets simultaneously. Section names listed in `[otlp]` must not conflict with built-in section names (`app`, `include`, `exclude`, `diags`, `otlp`, `http`, `processtags`).
 
 ```
 [otlp]
