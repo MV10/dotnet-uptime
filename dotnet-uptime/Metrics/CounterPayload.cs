@@ -12,7 +12,11 @@ public class CounterPayload
     public string DisplayUnits { get; init; }
     public double Value { get; init; }
     public DateTime Timestamp { get; init; }
-    public string Tags { get; init; }
+    /// <summary>
+    /// Tags published with the measurement by the monitored application, recovered
+    /// from the runtime's delimited string by <see cref="CounterTagParser"/>.
+    /// </summary>
+    public IReadOnlyList<KeyValuePair<string, string>> Tags { get; init; } = Array.Empty<KeyValuePair<string, string>>();
     public CounterKind Kind { get; init; }
 
     /// <summary>

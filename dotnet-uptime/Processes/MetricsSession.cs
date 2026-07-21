@@ -284,7 +284,8 @@ public class MetricsSession : IDisposable
 
         meterProviders[meterName] = true;
 
-        var tags = (string)traceEvent.PayloadValue(tagsIndex);
+        // see CounterTagParser for why this needs recovering rather than splitting
+        var tags = CounterTagParser.Parse((string)traceEvent.PayloadValue(tagsIndex));
         var valueText = (string)traceEvent.PayloadValue(valueIndex);
 
         if (!double.TryParse(valueText, NumberStyles.Number | NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
@@ -314,7 +315,8 @@ public class MetricsSession : IDisposable
 
         meterProviders[meterName] = true;
 
-        var tags = (string)traceEvent.PayloadValue(5);
+        // see CounterTagParser for why this needs recovering rather than splitting
+        var tags = CounterTagParser.Parse((string)traceEvent.PayloadValue(5));
         var quantilesText = (string)traceEvent.PayloadValue(6);
 
         // quantiles format: "50=1.23;95=4.56;99=7.89"
@@ -329,7 +331,11 @@ public class MetricsSession : IDisposable
             if (!double.TryParse(valText, NumberStyles.Number | NumberStyles.Float, CultureInfo.InvariantCulture, out double val))
                 continue;
 
-            var pctTag = string.IsNullOrEmpty(tags) ? $"Percentile={pctText}" : $"{tags},Percentile={pctText}";
+            // each quantile becomes its own series, distinguished by a Percentile tag
+            var quantileTags = new List<KeyValuePair<string, string>>(tags)
+            {
+                new("Percentile", pctText)
+            };
 
             callback.OnCounterPayload(pid, new CounterPayload
             {
@@ -339,7 +345,7 @@ public class MetricsSession : IDisposable
                 DisplayUnits = string.Empty,
                 Value = val,
                 Timestamp = traceEvent.TimeStamp,
-                Tags = pctTag,
+                Tags = quantileTags,
                 Kind = CounterKind.Gauge,
                 ContainerPID = containerPid,
                 ContainerID = containerId

@@ -209,8 +209,6 @@ class Program
             return 1;
         }
 
-        var otelCallback = new OtelMetricsCallback();
-
         var host = Host.CreateDefaultBuilder(args)
             .UseWindowsService()
             .UseSystemd()
@@ -218,7 +216,9 @@ class Program
             .ConfigureServices(services =>
             {
                 services.AddSingleton(config);
-                services.AddSingleton<IMetricsCallback>(otelCallback);
+                // constructed by DI so it receives an ILogger, and so the host
+                // disposes it (and its Meter) on shutdown
+                services.AddSingleton<IMetricsCallback, OtelMetricsCallback>();
                 services.AddSingleton<ProcessManager>();
                 services.AddHostedService<ProcessScannerService>();
                 OtelConfiguration.ConfigureOpenTelemetry(services, config, config.App.DiagnosticsIntervalMs);
