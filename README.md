@@ -191,7 +191,7 @@ The `[processtags]` section lists facts about each monitored process to emit as 
 
 | Name | Emitted as | Value |
 |---|---|---|
-| `assembly` | `service.name` | Managed entrypoint assembly name |
+| `assembly` | `process.assembly` | Managed entrypoint assembly name |
 | `filename` | `process.executable.name` | Executable filename |
 | `pathname` | `process.executable.path` | Full executable path |
 | `commandline` | `process.command_line` | Full command line, including arguments |
@@ -211,13 +211,51 @@ clrversion
 
 Each tag must be listed explicitly. Wildcards are deliberately not supported: these values become part of every series identity, so adding one is a change that should be made on purpose rather than inherited silently from a future version that knows about more facts.
 
-These tags cost nothing in series cardinality. They are constant per process and the PID tag is already present, so they widen each existing series rather than creating new ones. Values that are unavailable on a given target (ie. no RID before .NET 9) are omitted rather than exported blank.
+These tags cost nothing in series cardinality. They are constant per process and the PID tag is already present, so they widen each existing series rather than creating new ones. Values that are unavailable on a given target (e.g. no RID before .NET 9) are omitted rather than exported blank.
 
 Where a monitored application publishes a tag whose name collides with one of Uptime's, Uptime's value wins and the application's is dropped. If the two values differ, a warning is logged once per process.
 
+> It is important to understand that Uptime is not "transparent" to OpenTelemetry Collector endpoints. In the OTel data model, every export batch carries one **Resource**: a set of attributes describing the entity that produced the telemetry. Backends generally treat the Resource's `service.name` as the primary grouping key, and it is what populates their service list. Every batch Uptime sends carries a single Resource identifying **Uptime itself** (`service.name=dotnet-uptime`, plus `host.name` and anything from `[hosttags]`). The monitored applications are identified by attributes on each data point, not by the Resource. That means a backend shows one service called `dotnet-uptime` per host, with metrics from every monitored application _inside_ it.
+>
+> This is intentional:
+>
+> - It avoids identity collisions. An application that already exports its own OpenTelemetry metrics uses its own `service.name`. If Uptime also claimed that name, the backend would see two independent producers writing overlapping metrics for one service, at different intervals.
+>
+> - You can always tell which metrics arrived via Uptime and which the application published itself.
+>
+> If you would rather see one service per monitored application, many Collector implementations can regroup the data on the fly (or something like `otelcol-contrib` can be configured as an intermediate pipeline Collector), but those configuration details are beyond the scope of this documentation.
+
+### [hosttags] Config Section
+
+Where `[processtags]` describes each monitored process, `[hosttags]` describes the host they run on. These are static `key=value` pairs you define, constant for the whole Uptime instance, and they are emitted as OTel **resource attributes** rather than as tags on each measurement — OTLP transmits resource attributes once per export batch instead of once per data point, which matters at fleet scale.
+
+`host.name` and `os.type` are always emitted whether or not this section exists, because metrics with no host attribution cannot be attributed to anything. Listing either name here overrides the built-in value.
+
+```ini
+[hosttags]
+environment=QA
+datacenter=us-east
+node=%machinename%-web
+```
+
+Values may contain `%token%` substitutions:
+
+| Token | Value |
+|---|---|
+| `%machinename%` | Machine name |
+| `%fqdn%` | Fully-qualified domain name, falling back to the machine name if DNS cannot answer |
+| `%osversion%` | OS description string |
+| `%osname%` | `windows`, `linux`, or `darwin` |
+| `%uptimeversion%` | This application's version |
+| `%env:NAME%` | An environment variable |
+
+An unrecognized token is a configuration error. A referenced environment variable that is not set is reported as a warning by `validate` — which may be running as a different user with a different environment — but service mode refuses to start, because an empty tag value would silently mislabel every metric the host exports.
+
+Note that `%env:NAME%` reads the environment of the Uptime process, not of any monitored process. Under systemd that means whatever the Uptime unit file sets, so an application-specific variable such as `ASPNETCORE_ENVIRONMENT` will not resolve unless it is also set for Uptime itself.
+
 ### [otlp] Config Section
 
-The `[otlp]` section lists named OpenTelemetry OTLP push targets. Each name corresponds to its own config section with endpoint settings. Data is pushed to all listed targets simultaneously. Section names listed in `[otlp]` must not conflict with built-in section names (`app`, `include`, `exclude`, `diags`, `otlp`, `http`, `processtags`).
+The `[otlp]` section lists named OpenTelemetry OTLP push targets. Each name corresponds to its own config section with endpoint settings. Data is pushed to all listed targets simultaneously. Section names listed in `[otlp]` must not conflict with built-in section names (`app`, `include`, `exclude`, `diags`, `otlp`, `http`, `processtags`, `hosttags`).
 
 ```
 [otlp]

@@ -1,7 +1,9 @@
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using OpenTelemetry;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 
 namespace MV10.DotnetUptime;
 
@@ -25,6 +27,7 @@ static class OtelConfiguration
         services.AddOpenTelemetry()
             .WithMetrics(metrics =>
             {
+                metrics.SetResourceBuilder(BuildResource(config));
                 metrics.AddMeter(OtelMetricsCallback.MeterName);
                 ConfigureOtlpExporters(metrics, config, exportIntervalMs);
                 ConfigurePrometheus(metrics, config);
@@ -37,12 +40,36 @@ static class OtelConfiguration
     public static MeterProvider BuildMeterProvider(ConfigParser config, int exportIntervalMs)
     {
         var builder = Sdk.CreateMeterProviderBuilder()
+            .SetResourceBuilder(BuildResource(config))
             .AddMeter(OtelMetricsCallback.MeterName);
 
         ConfigureOtlpExporters(builder, config, exportIntervalMs);
         ConfigurePrometheus(builder, config);
 
         return builder.Build();
+    }
+
+    /// <summary>
+    /// Builds the OTel resource describing this host. Baseline attributes identifying
+    /// the machine are always present because metrics with no host attribution are
+    /// useless; [hosttags] entries are layered on top and may override them.
+    /// </summary>
+    private static ResourceBuilder BuildResource(ConfigParser config)
+    {
+        var attributes = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["host.name"] = Environment.MachineName,
+            ["os.type"] = HostTagResolver.OperatingSystemName()
+        };
+
+        foreach (var tag in config.HostTags)
+            attributes[tag.Key] = tag.Value;
+
+        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown";
+
+        return ResourceBuilder.CreateEmpty()
+            .AddService(serviceName: "dotnet-uptime", serviceVersion: version)
+            .AddAttributes(attributes);
     }
 
     /// <summary>

@@ -211,6 +211,15 @@ class Program
             return 1;
         }
 
+        // an empty tag value would silently mislabel every metric this host exports
+        if (config.UnresolvedEnvVars.Count > 0)
+        {
+            Console.Error.WriteLine("Config error: [hosttags] references environment variables that are not set:");
+            foreach (var name in config.UnresolvedEnvVars.Distinct())
+                Console.Error.WriteLine($"  {name}");
+            return 1;
+        }
+
         // service mode collects metrics only to export them; without a destination
         // there is nothing to do, so refuse to start
         if (config.OtlpTargetNames.Count == 0 && config.HttpEndpoint is null)
@@ -308,6 +317,18 @@ class Program
         }
 
         Console.WriteLine();
+        if (config.HostTags.Count == 0)
+        {
+            Console.WriteLine("Host tags: none (baseline host.name and os.type are always emitted)");
+        }
+        else
+        {
+            Console.WriteLine("Host tags:");
+            foreach (var tag in config.HostTags)
+                Console.WriteLine($"  {tag.Key} = {tag.Value}");
+        }
+
+        Console.WriteLine();
         if (config.OtlpTargetNames.Count == 0)
         {
             Console.WriteLine("OTLP targets: none");
@@ -325,6 +346,17 @@ class Program
         Console.WriteLine(config.HttpEndpoint is null
             ? "HTTP endpoint: none"
             : $"HTTP endpoint: {config.HttpEndpoint.Endpoint} ({config.HttpEndpoint.Type})");
+
+        // an unset variable may simply mean `validate` is running as a different user
+        // than the service will, so this is a warning here and fatal at service start
+        if (config.UnresolvedEnvVars.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("WARNING: [hosttags] references environment variables that are not set:");
+            foreach (var name in config.UnresolvedEnvVars.Distinct())
+                Console.WriteLine($"  {name}");
+            Console.WriteLine("Service mode will refuse to start until they are set.");
+        }
 
         // not an error: list, procs and single-PID monitoring are all usable
         // without an export target, but service mode refuses to start
