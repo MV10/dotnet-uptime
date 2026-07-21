@@ -1,5 +1,7 @@
 
 
+using Microsoft.Extensions.Logging;
+
 namespace MV10.DotnetUptime;
 
 /// <summary>
@@ -12,12 +14,16 @@ public class ProcessManager
     private readonly ProcessDiscovery discovery = new();
     private readonly ConfigParser config;
     private readonly IMetricsCallback metricsCallback;
+    private readonly ILogger<ProcessManager> logger;
+    private readonly ILogger sessionLogger;
     private readonly object syncLock = new();
 
-    public ProcessManager(ConfigParser config, IMetricsCallback callback)
+    public ProcessManager(ConfigParser config, IMetricsCallback callback, ILoggerFactory loggerFactory = null)
     {
         this.config = config;
         metricsCallback = callback;
+        logger = loggerFactory?.CreateLogger<ProcessManager>();
+        sessionLogger = loggerFactory?.CreateLogger<MetricsSession>();
     }
 
     public void ScanAndReconcile()
@@ -65,16 +71,20 @@ public class ProcessManager
     {
         // per-process facts are constant for the session, so resolve them once here
         var processTags = ProcessTagBuilder.Build(proc, config.ProcessTagNames);
-        var session = new MetricsSession(proc.PID, proc.Filename, metricsCallback, config, processTags);
+        var session = new MetricsSession(proc.PID, proc.Filename, metricsCallback, config, processTags, sessionLogger);
         processes[proc.PID] = new ManagedProcess(proc, session);
         session.Start();
+
+        logger?.LogInformation("Added PID {Pid} {CommandLine}", proc.PID, proc.CommandLine);
     }
 
     private void StopSession(int pid)
     {
+        // the command line lives on the tracked process, so read it before removing
         if (processes.Remove(pid, out var managed))
         {
             managed.Session.Dispose();
+            logger?.LogInformation("Removed PID {Pid} {CommandLine}", pid, managed.Process.CommandLine);
         }
     }
 

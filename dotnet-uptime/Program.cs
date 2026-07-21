@@ -240,6 +240,9 @@ class Program
                 // disposes it (and its Meter) on shutdown
                 services.AddSingleton<IMetricsCallback, OtelMetricsCallback>();
                 services.AddSingleton<ProcessManager>();
+                // registered as a hosted service so the host constructs it at startup
+                // (it begins listening in its constructor) and disposes it on shutdown
+                services.AddHostedService<OtelDiagnosticsListener>();
                 services.AddHostedService<ProcessScannerService>();
                 OtelConfiguration.ConfigureOpenTelemetry(services, config, config.App.DiagnosticsIntervalMs);
             })

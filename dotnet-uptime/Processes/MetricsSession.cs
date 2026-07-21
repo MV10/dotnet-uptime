@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
+using Microsoft.Extensions.Logging;
 
 namespace MV10.DotnetUptime;
 
@@ -18,11 +19,20 @@ public class MetricsSession : IDisposable
 {
     private const string MetricsProviderName = "System.Diagnostics.Metrics";
 
+    // .NET 8+ shared-session identifier; diagnostic events echo it so a tool can tell
+    // its own session's events from those of another tool attached to the same process
+    private const string SharedSessionId = "SHARED";
+
     private readonly int pid;
     private readonly int? containerPid;
     private readonly string containerId;
     private readonly IReadOnlyList<KeyValuePair<string, string>> processTags;
     private readonly IMetricsCallback callback;
+    private readonly ILogger logger;
+
+    // limit and multi-session conditions persist for the life of the session, so each
+    // is reported once rather than on every refresh interval
+    private readonly HashSet<string> reportedConditions = new(StringComparer.Ordinal);
     private readonly List<DiagProviderSpec> providers;
     private readonly int intervalSeconds;
     private readonly int maxHistograms;
@@ -41,9 +51,10 @@ public class MetricsSession : IDisposable
     // processFilename gates per-provider process filters from [diags]; pass null (interactive
     // single-PID monitoring) to ignore those filters and apply every configured provider
     public MetricsSession(int pid, string processFilename, IMetricsCallback callback, ConfigParser config,
-        IReadOnlyList<KeyValuePair<string, string>> processTags = null)
+        IReadOnlyList<KeyValuePair<string, string>> processTags = null, ILogger logger = null)
     {
         this.pid = pid;
+        this.logger = logger;
         this.processTags = processTags ?? Array.Empty<KeyValuePair<string, string>>();
         // a differing namespace PID means the process runs in a container
         if (ProcessDiscovery.TryGetNamespacePid(pid, out int nsPid))
@@ -168,7 +179,6 @@ public class MetricsSession : IDisposable
 
         // add the System.Diagnostics.Metrics provider for modern meters
         // shared sessions available on .NET 8+; always request it
-        var sessionId = "SHARED";
         var clientId = Guid.NewGuid().ToString();
 
         const long timeSeriesValuesKeyword = 0x2;
@@ -178,7 +188,7 @@ public class MetricsSession : IDisposable
             timeSeriesValuesKeyword,
             new Dictionary<string, string>
             {
-                ["SessionId"] = sessionId,
+                ["SessionId"] = SharedSessionId,
                 ["Metrics"] = metricsArgument,
                 ["RefreshInterval"] = intervalSeconds.ToString(CultureInfo.InvariantCulture),
                 ["MaxTimeSeries"] = maxTimeSeries.ToString(CultureInfo.InvariantCulture),
@@ -204,7 +214,84 @@ public class MetricsSession : IDisposable
                 HandleMeterEvent(traceEvent);
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // a malformed or unexpected event must not kill the session, but silently
+            // discarding it hides real problems, so report the first of each kind
+            ReportOnce($"exception:{traceEvent.EventName}", LogLevel.Warning,
+                "PID {Pid}: error handling '{EventName}' from provider '{ProviderName}': {Message}. "
+                + "Further errors for this event are not reported.",
+                pid, traceEvent.EventName, traceEvent.ProviderName, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Logs a condition the first time it occurs in this session. Limit and error
+    /// events repeat on every refresh interval, which would otherwise flood the log
+    /// for the entire lifetime of a monitored process.
+    /// </summary>
+    private void ReportOnce(string key, LogLevel level, string message, params object[] args)
+    {
+        lock (reportedConditions)
+        {
+            if (!reportedConditions.Add(key)) return;
+        }
+
+        logger?.Log(level, message, args);
+    }
+
+    /// <summary>
+    /// Handles the diagnostic events MetricsEventSource emits alongside measurements.
+    /// Without these, hitting maxtimeseries or failing to attach alongside another
+    /// tool is indistinguishable from a process that simply has no metrics.
+    /// </summary>
+    private void HandleDiagnosticEvent(TraceEvent traceEvent)
+    {
+        // these events carry the SessionId at index 0; ignore any that belong to a
+        // different tool's concurrent session on the same process
+        var eventSessionId = traceEvent.PayloadValue(0) as string;
+        if (!string.Equals(eventSessionId, SharedSessionId, StringComparison.Ordinal)) return;
+
+        switch (traceEvent.EventName)
+        {
+            case "TimeSeriesLimitReached":
+                ReportOnce("TimeSeriesLimitReached", LogLevel.Warning,
+                    "PID {Pid}: time series limit ({Limit}) reached; further series from this process are "
+                    + "not collected. Raise maxtimeseries or narrow [diags] to reduce cardinality.",
+                    pid, maxTimeSeries);
+                break;
+
+            case "HistogramLimitReached":
+                ReportOnce("HistogramLimitReached", LogLevel.Warning,
+                    "PID {Pid}: histogram limit ({Limit}) reached; further histograms from this process are "
+                    + "not collected. Raise maxhistograms or narrow [diags].",
+                    pid, maxHistograms);
+                break;
+
+            case "MultipleSessionsNotSupportedError":
+                ReportOnce("MultipleSessionsNotSupportedError", LogLevel.Error,
+                    "PID {Pid}: the runtime refused the metrics session because another tool already holds a "
+                    + "non-shared session on this process. No metrics will be collected from it.", pid);
+                break;
+
+            case "MultipleSessionsConfiguredIncorrectlyError":
+                ReportOnce("MultipleSessionsConfiguredIncorrectlyError", LogLevel.Error,
+                    "PID {Pid}: the metrics session conflicts with another tool's session on this process "
+                    + "(mismatched interval or limits). Metrics may be incomplete.", pid);
+                break;
+
+            case "ObservableInstrumentCallbackError":
+                ReportOnce("ObservableInstrumentCallbackError", LogLevel.Warning,
+                    "PID {Pid}: an observable instrument callback threw inside the monitored application; "
+                    + "those values are missing. This is a fault in the application, not in Uptime.", pid);
+                break;
+
+            case "Error":
+                ReportOnce("Error", LogLevel.Error,
+                    "PID {Pid}: the runtime reported a metrics error: {Message}",
+                    pid, traceEvent.PayloadValue(1) as string ?? "(no detail)");
+                break;
+        }
     }
 
     /// <summary>
@@ -275,6 +362,17 @@ public class MetricsSession : IDisposable
             case "HistogramValuePublished":
                 // payload index 6 is Quantiles (string), 5 is tags
                 HandleHistogramValue(traceEvent);
+                break;
+
+            // diagnostics rather than measurements; ignoring these makes dropped data
+            // and failed attachment silent
+            case "TimeSeriesLimitReached":
+            case "HistogramLimitReached":
+            case "MultipleSessionsNotSupportedError":
+            case "MultipleSessionsConfiguredIncorrectlyError":
+            case "ObservableInstrumentCallbackError":
+            case "Error":
+                HandleDiagnosticEvent(traceEvent);
                 break;
         }
     }

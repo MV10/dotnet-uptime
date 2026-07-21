@@ -43,6 +43,7 @@ public class ProcessRule
     /// </summary>
     public string FindSpecifier(string commandline)
     {
+        if (SpecifierRegex is null) return string.Empty;
         if (string.IsNullOrWhiteSpace(commandline)) return string.Empty;
 
         var match = SpecifierRegex.Match(commandline);
