@@ -31,6 +31,9 @@ public class ProcessDiscovery
     // inheriting the previous occupant's verdict.
     private readonly Dictionary<int, string> rejectedPids = new();
 
+    /// <summary>Eligible processes currently excluded by the configured rules.</summary>
+    public int RejectedCount => rejectedPids.Count;
+
     /// <summary>
     /// Finds processes exposing a .NET diagnostic port and updates the externally-managed list
     /// of known processes. Returns read-only lists of processes that were added or removed.

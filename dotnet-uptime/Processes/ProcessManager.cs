@@ -16,17 +16,37 @@ public class ProcessManager
     private readonly IMetricsCallback metricsCallback;
     private readonly ILogger<ProcessManager> logger;
     private readonly ILogger sessionLogger;
+    private readonly SelfMetrics selfMetrics;
     private readonly object syncLock = new();
 
-    public ProcessManager(ConfigParser config, IMetricsCallback callback, ILoggerFactory loggerFactory = null)
+    public ProcessManager(ConfigParser config, IMetricsCallback callback,
+        ILoggerFactory loggerFactory = null, SelfMetrics selfMetrics = null)
     {
         this.config = config;
         metricsCallback = callback;
+        this.selfMetrics = selfMetrics;
         logger = loggerFactory?.CreateLogger<ProcessManager>();
         sessionLogger = loggerFactory?.CreateLogger<MetricsSession>();
+
+        // the gauges report state this class owns, so it supplies the callbacks
+        selfMetrics?.SetStateProviders(
+            monitored: () => { lock (syncLock) return processes.Count; },
+            filtered: () => discovery.RejectedCount,
+            active: () => { lock (syncLock) return processes.Values.Count(p => p.Session.IsRunning); });
     }
 
     public void ScanAndReconcile()
+    {
+        if (selfMetrics is null)
+        {
+            Reconcile();
+            return;
+        }
+
+        selfMetrics.TimeDiscovery(Reconcile);
+    }
+
+    private void Reconcile()
     {
         lock (syncLock)
         {
@@ -34,17 +54,6 @@ public class ProcessManager
                 knownProcesses,
                 config.Rules.Count > 0 ? config.Rules : null,
                 config.RuleType);
-
-            // exclude self if configured
-            if (config.App.ExcludeSelf)
-            {
-                var selfPid = Environment.ProcessId;
-                if (knownProcesses.ContainsKey(selfPid))
-                {
-                    knownProcesses.Remove(selfPid);
-                    added = added.Where(p => p.PID != selfPid).ToList();
-                }
-            }
 
             foreach (var proc in removed)
             {
@@ -71,9 +80,11 @@ public class ProcessManager
     {
         // per-process facts are constant for the session, so resolve them once here
         var processTags = ProcessTagBuilder.Build(proc, config.ProcessTagNames);
-        var session = new MetricsSession(proc.PID, proc.Filename, metricsCallback, config, processTags, sessionLogger);
+        var session = new MetricsSession(proc.PID, proc.Filename, metricsCallback, config, processTags,
+            sessionLogger, proc.ManagedEntrypointAssemblyName, selfMetrics);
         processes[proc.PID] = new ManagedProcess(proc, session);
         session.Start();
+        selfMetrics?.SessionStarted();
 
         logger?.LogInformation("Added PID {Pid} {CommandLine}", proc.PID, proc.CommandLine);
     }
@@ -84,6 +95,7 @@ public class ProcessManager
         if (processes.Remove(pid, out var managed))
         {
             managed.Session.Dispose();
+            selfMetrics?.SessionEnded();
             logger?.LogInformation("Removed PID {Pid} {CommandLine}", pid, managed.Process.CommandLine);
         }
     }

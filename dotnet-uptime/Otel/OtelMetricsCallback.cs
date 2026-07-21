@@ -17,6 +17,7 @@ class OtelMetricsCallback : IMetricsCallback, IDisposable
     private readonly Meter meter = new(MeterName);
     private readonly ConcurrentDictionary<string, Gauge<double>> gauges = new();
     private readonly ILogger<OtelMetricsCallback> logger;
+    private readonly SelfMetrics selfMetrics;
 
     // one collision warning per monitored process; entries are dropped when the
     // session ends so a long-running service doesn't accumulate them as PIDs churn
@@ -27,13 +28,16 @@ class OtelMetricsCallback : IMetricsCallback, IDisposable
     private static readonly HashSet<string> ReservedTagKeys = new(StringComparer.OrdinalIgnoreCase)
         { "pid", "counter.kind", "container.pid", "container.id" };
 
-    public OtelMetricsCallback(ILogger<OtelMetricsCallback> logger = null)
+    public OtelMetricsCallback(ILogger<OtelMetricsCallback> logger = null, SelfMetrics selfMetrics = null)
     {
         this.logger = logger;
+        this.selfMetrics = selfMetrics;
     }
 
     public void OnCounterPayload(int pid, CounterPayload payload)
     {
+        selfMetrics?.MeasurementReceived();
+
         var instrumentName = $"{payload.ProviderName}.{payload.CounterName}";
         var gauge = gauges.GetOrAdd(instrumentName, name =>
             meter.CreateGauge<double>(name, payload.DisplayUnits, payload.DisplayName));

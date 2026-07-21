@@ -8,6 +8,9 @@ namespace MV10.DotnetUptime;
 
 class Program
 {
+    // the entrypoint assembly name of the service, used to find it from another instance
+    private const string ServiceAssemblyName = "dotnet-uptime";
+
     static int Main(string[] args)
     {
         if (args.Length == 0)
@@ -36,6 +39,9 @@ class Program
             case "procs":
                 ListProcesses(verbose: false);
                 return 0;
+
+            case "stats":
+                return ShowStats();
 
             case "validate":
                 return ValidateConfig();
@@ -229,6 +235,10 @@ class Program
             return 1;
         }
 
+        // created here rather than resolved from DI because the exporter wrapper needs
+        // it while the service collection is still being configured
+        var selfMetrics = new SelfMetrics();
+
         var host = Host.CreateDefaultBuilder(args)
             .UseWindowsService()
             .UseSystemd()
@@ -236,6 +246,7 @@ class Program
             .ConfigureServices(services =>
             {
                 services.AddSingleton(config);
+                services.AddSingleton(selfMetrics);
                 // constructed by DI so it receives an ILogger, and so the host
                 // disposes it (and its Meter) on shutdown
                 services.AddSingleton<IMetricsCallback, OtelMetricsCallback>();
@@ -244,11 +255,73 @@ class Program
                 // (it begins listening in its constructor) and disposes it on shutdown
                 services.AddHostedService<OtelDiagnosticsListener>();
                 services.AddHostedService<ProcessScannerService>();
-                OtelConfiguration.ConfigureOpenTelemetry(services, config, config.App.DiagnosticsIntervalMs);
+                OtelConfiguration.ConfigureOpenTelemetry(services, config, config.App.DiagnosticsIntervalMs, selfMetrics);
             })
             .Build();
 
         host.Run();
+        return 0;
+    }
+
+    /// <summary>
+    /// Streams the running service's own metrics to the console. Connects to the
+    /// service over EventPipe exactly as single-PID monitoring does, filtered to
+    /// Uptime's self-metrics meter. Process inventory is the `summary` command's job.
+    /// </summary>
+    static int ShowStats()
+    {
+        var procs = new Dictionary<int, DiagnosticProcess>();
+        new ProcessDiscovery().Discover(procs);
+
+        // exactly one service instance is the supported deployment, so the service is
+        // the single Uptime instance that is not this process. Identify it by entrypoint
+        // assembly rather than filename, which is "dotnet" for a framework-dependent run.
+        var service = procs.Values.FirstOrDefault(p =>
+            p.PID != Environment.ProcessId
+            && string.Equals(p.ManagedEntrypointAssemblyName, ServiceAssemblyName, StringComparison.OrdinalIgnoreCase));
+
+        if (service is null)
+        {
+            Console.WriteLine("No running dotnet-uptime service was found.");
+            return 1;
+        }
+
+        // a synthetic config: only the self-metrics meter, collected once per second
+        var config = ConfigParser.Parse(new[] { "[diags]", SelfMetrics.MeterName });
+        config.App.DiagnosticsIntervalMs = 1000;
+
+        Console.WriteLine($"Reading service metrics from PID {service.PID}, press Ctrl+C to stop.");
+        Console.WriteLine("Values update once per discovery pass, so they may repeat between passes.");
+        Console.WriteLine();
+
+        using var cts = new CancellationTokenSource();
+
+        var callback = new CompositeMetricsCallback(
+            new ConsoleMetricsCallback(),
+            new SessionEndedCallback(() => cts.Cancel()));
+
+        // null filename so the [diags] process filters do not apply
+        using var session = new MetricsSession(service.PID, null, callback, config);
+
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            cts.Cancel();
+        };
+
+        session.Start();
+
+        try
+        {
+            Task.Delay(Timeout.Infinite, cts.Token).Wait();
+        }
+        catch (AggregateException ex) when (ex.InnerException is TaskCanceledException)
+        {
+            // Ctrl+C, or the service stopped
+        }
+
+        session.Stop();
+        Console.WriteLine("Stopped.");
         return 0;
     }
 
@@ -283,7 +356,6 @@ class Program
         Console.WriteLine($"  diags          {config.App.DiagnosticsIntervalMs}");
         Console.WriteLine($"  maxhistograms  {config.App.MaxHistograms}");
         Console.WriteLine($"  maxtimeseries  {config.App.MaxTimeSeries}");
-        Console.WriteLine($"  excludeself    {config.App.ExcludeSelf}");
         Console.WriteLine($"  loglevel       {config.App.MinimumLogLevel}");
 
         Console.WriteLine();
@@ -388,6 +460,7 @@ Commands:
   <PID>         Monitor a single process (OTel output + 1 per second console output)
   list          Show eligible .NET processes with full details
   procs         Show eligible .NET processes (PID and command line only)
+  stats         Show the running service's own operational metrics
   validate      Check uptime.conf and show the effective settings
   version       Show program version
   help          Show this help message");

@@ -29,6 +29,7 @@ public class MetricsSession : IDisposable
     private readonly IReadOnlyList<KeyValuePair<string, string>> processTags;
     private readonly IMetricsCallback callback;
     private readonly ILogger logger;
+    private readonly SelfMetrics selfMetrics;
 
     // limit and multi-session conditions persist for the life of the session, so each
     // is reported once rather than on every refresh interval
@@ -51,10 +52,12 @@ public class MetricsSession : IDisposable
     // processFilename gates per-provider process filters from [diags]; pass null (interactive
     // single-PID monitoring) to ignore those filters and apply every configured provider
     public MetricsSession(int pid, string processFilename, IMetricsCallback callback, ConfigParser config,
-        IReadOnlyList<KeyValuePair<string, string>> processTags = null, ILogger logger = null)
+        IReadOnlyList<KeyValuePair<string, string>> processTags = null, ILogger logger = null,
+        string processAssemblyName = null, SelfMetrics selfMetrics = null)
     {
         this.pid = pid;
         this.logger = logger;
+        this.selfMetrics = selfMetrics;
         this.processTags = processTags ?? Array.Empty<KeyValuePair<string, string>>();
         // a differing namespace PID means the process runs in a container
         if (ProcessDiscovery.TryGetNamespacePid(pid, out int nsPid))
@@ -63,7 +66,7 @@ public class MetricsSession : IDisposable
         this.callback = callback;
         providers = processFilename is null
             ? config.DiagProviders
-            : config.DiagProviders.Where(spec => spec.MatchesProcess(processFilename)).ToList();
+            : config.DiagProviders.Where(spec => spec.MatchesProcess(processFilename, processAssemblyName)).ToList();
         intervalSeconds = config.App.DiagnosticsIntervalMs / 1000;
         if (intervalSeconds < 1) intervalSeconds = 1;
         maxHistograms = config.App.MaxHistograms;
@@ -112,7 +115,9 @@ public class MetricsSession : IDisposable
         }
         catch (Exception)
         {
-            // process exited or IPC failure
+            // process exited or IPC failure; a clean shutdown is handled above, so
+            // reaching here means the session ended for a reason we did not choose
+            selfMetrics?.SessionFailed();
         }
         finally
         {

@@ -12,6 +12,5 @@ public class AppConfig
     public int DiagnosticsIntervalMs { get; set; } = 15000;
     public int MaxHistograms { get; set; } = 10;
     public int MaxTimeSeries { get; set; } = 1000;
-    public bool ExcludeSelf { get; set; } = true;
     public LogLevel MinimumLogLevel { get; set; } = LogLevel.Warning;
 }

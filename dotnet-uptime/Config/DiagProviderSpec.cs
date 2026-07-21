@@ -39,12 +39,20 @@ public class DiagProviderSpec
     }
 
     /// <summary>
-    /// Whether this spec applies to a process with the given executable filename. Specs
-    /// without a process filter apply to every process.
+    /// Whether this spec applies to a process. Specs without a process filter apply to
+    /// every process. The filter matches either the managed entrypoint assembly name or
+    /// the executable filename, for the same reasons [include]/[exclude] rules do: a
+    /// native host has no entrypoint assembly, and every "dotnet myapp.dll" process has
+    /// the filename "dotnet".
     /// </summary>
-    public bool MatchesProcess(string filename)
+    public bool MatchesProcess(string filename, string assemblyName = null)
     {
         if (string.IsNullOrEmpty(ProcessFilter)) return true;
+
+        if (!string.IsNullOrEmpty(assemblyName)
+            && string.Equals(ProcessFilter, assemblyName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
         return string.Equals(ProcessFilter, filename, StringComparison.OrdinalIgnoreCase);
     }
 

@@ -30,6 +30,7 @@ Commands:
   <PID>         Monitor a single process (OTel output + 1 per second console output)
   list          Show eligible .NET processes with full details
   procs         Show eligible .NET processes (PID and command line only)
+  stats         Show the running service's own operational metrics
   validate      Check uptime.conf and show the effective settings
   version       Show program version
   help          Show this help message
@@ -145,7 +146,6 @@ The `[app]` section contains settings that control overall application behavior.
 | `diags` | 15000 | Counter collection interval, milliseconds |
 | `maxhistograms` | 10 | Max histogram instruments tracked per process |
 | `maxtimeseries` | 1000 | Max time series tracked per process |
-| `excludeself` | true | When true, `dotnet-uptime` excludes its own PID from monitoring |
 | `loglevel` | warning | Minimum log level: `trace`, `debug`, `information`, `warning`, `error`, `critical`, or `none` |
 
 Note that the `diags` counter collection interval is _also_ the interval at which data is pushed to OTLP collectors. When running in interactive mode monitoring a specific PID (console output), the rate is always 1 second, but any configured OTLP collection will continue at the configured rate. Collectors are expected to downsample to whatever data they actually wish to process and store.
@@ -173,6 +173,15 @@ For example, the following will avoid reporting metrics from the IIS w3wp.exe in
 w3wp.exe: -ap """"(?<Specifier>DefaultAppPool)""""
 ```
 
+**Uptime is not special-cased.** It is an ordinary .NET process with a diagnostic port, so with no rule naming it, Uptime monitors itself and any other running Uptime instance, including a short-lived `stats` or `summary` invocation. The sample configuration therefore ships with:
+
+```
+[exclude]
+dotnet-uptime
+```
+
+Because `dotnet-uptime` is both the executable filename and the entrypoint assembly name, that single entry covers every instance and every launch scenario. Delete it to collect standard runtime metrics (memory, GC, thread pool) about Uptime itself, which is a reasonable thing to want at enterprise-scale. It is opt-in rather than automatic because it adds roughly sixty series per host.
+
 ### [diags] Config Section
 
 The `[diags]` section lists diagnostics providers to collect. Each entry is a provider name, optionally followed by `[counter1,counter2]` to select specific counters (omit the list to collect all counters). An optional executable name can be added following a colon, which means those metrics are only collected for matching processes. If this section is missing or empty, defaults to `System.Runtime` (all counters for every monitored process).
@@ -193,7 +202,23 @@ Wildcards are convenient but not free: a wildcard subscribes to _all_ meters in 
 System.Net.*: w3wp.exe                       # every System.Net meter, only from w3wp.exe
 ```
 
+The process filter matches either the executable filename or the managed entrypoint assembly name, the same way `[include]`/`[exclude]` entries do, so it works for applications launched as `dotnet myapp.dll` where every filename is `dotnet`.
+
 The process filter is enforced only during service-mode scanning, where Uptime chooses which discovered processes get which providers. Interactive single-PID monitoring (`dotnet-uptime <PID>`) ignores process filters and applies every configured provider to the chosen process, since you have already selected exactly one target.
+
+#### Uptime's own metrics
+
+Uptime publishes metrics about its own operation — processes monitored, discovery pass duration, export success and timing — on the `dotnet-uptime.self` meter. These are documented in [`stats_metrics.md`](https://github.com/MV10/dotnet-uptime/blob/master/stats_metrics.md).
+
+They are a custom meter like any other, so they are collected only if listed here, and only if Uptime is not excluded by the process rules. Because the sample configuration excludes Uptime by default, **these metrics are not exported unless you opt in**:
+
+```
+[diags]
+System.Runtime
+dotnet-uptime.self: dotnet-uptime
+```
+
+The process filter scopes the self meter to Uptime alone, leaving other monitored applications unaffected. The `dotnet-uptime` entry must also be removed from `[exclude]` for any of it to be collected. (The `stats` command needs none of this. It reads the meter directly from the running service, so it works regardless of configuration.)
 
 ### [processtags] Config Section
 

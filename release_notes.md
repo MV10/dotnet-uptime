@@ -10,6 +10,9 @@
 * Add assembly-matching to include/exclude logic (as well as filename)
 * Improved logging, added a console logger for service mode output
 * Rejected-PID cache avoids re-querying certain processes unnecessarily
+* Add Uptime-specific metrics for OTLP export (`dotnet-uptime.self`)
+* Add `stats_metrics` repository document explaining Uptime's custom metrics
+* Add `stats` interactive command to output Uptime's own metrics to console
 * Show Windows permissions reminder when running service as user
 * README warning about provider-wildcard overhead and filtering
 * README clarification that Uptime is not "transparent" to Collectors
