@@ -29,6 +29,7 @@ Commands:
   (none)        Run as a service (on Windows, permissions limitations may apply)
   list          Show eligible .NET processes with full details
   procs         Show eligible .NET processes (PID and command line only)
+  validate      Check uptime.conf and show the effective settings
   <PID>         Monitor a single process (console + OTel output, 1 second interval)
   version       Show program version
   help          Show this help message
@@ -145,6 +146,7 @@ The `[app]` section contains settings that control overall application behavior.
 | `maxhistograms` | 10 | Max histogram instruments tracked per process |
 | `maxtimeseries` | 1000 | Max time series tracked per process |
 | `excludeself` | true | When true, `dotnet-uptime` excludes its own PID from monitoring |
+| `loglevel` | warning | Minimum log level: `trace`, `debug`, `information`, `warning`, `error`, `critical`, or `none` |
 
 Note that the `diags` counter collection interval is _also_ the interval at which data is pushed to OTLP collectors. When running in interactive mode monitoring a specific PID (console output), the rate is always 1 second, but any configured OTLP collection will continue at the configured rate. Collectors are expected to downsample to whatever data they actually wish to process and store.
 

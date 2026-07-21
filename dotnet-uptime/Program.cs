@@ -37,6 +37,9 @@ class Program
                 ListProcesses(verbose: false);
                 return 0;
 
+            case "validate":
+                return ValidateConfig();
+
             case "version":
                 PrintVersion();
                 return 0;
@@ -190,7 +193,9 @@ class Program
         {
             // service mode requires a valid config; exit non-zero so the
             // service manager (systemd / Windows SCM) registers a failure
-            Console.Error.WriteLine($"Config error: {ex.Message}");
+            Console.Error.WriteLine($"Config errors in {ConfigParser.ConfigFilePath}");
+            foreach (var error in ex.Errors)
+                Console.Error.WriteLine($"  {error}");
             Console.Error.WriteLine("A valid uptime.conf is required to run as a service.");
             return 1;
         }
@@ -209,7 +214,7 @@ class Program
         var host = Host.CreateDefaultBuilder(args)
             .UseWindowsService()
             .UseSystemd()
-            .ConfigureLogging(logging => logging.SetMinimumLevel(LogLevel.Warning))
+            .ConfigureLogging(logging => logging.SetMinimumLevel(config.App.MinimumLogLevel))
             .ConfigureServices(services =>
             {
                 services.AddSingleton(config);
@@ -221,6 +226,92 @@ class Program
             .Build();
 
         host.Run();
+        return 0;
+    }
+
+    /// <summary>
+    /// Reports every problem in uptime.conf and echoes the effective settings.
+    /// Returns non-zero when the file is missing or invalid so deployment
+    /// scripts can gate on the result.
+    /// </summary>
+    static int ValidateConfig()
+    {
+        var path = ConfigParser.ConfigFilePath;
+        Console.WriteLine($"Config file: {path}");
+        Console.WriteLine();
+
+        ConfigParser config;
+        try
+        {
+            config = ConfigParser.Load();
+        }
+        catch (ConfigException ex)
+        {
+            Console.WriteLine($"INVALID - {ex.Errors.Count} error(s) found:");
+            foreach (var error in ex.Errors)
+                Console.WriteLine($"  {error}");
+            return 1;
+        }
+
+        Console.WriteLine("VALID");
+        Console.WriteLine();
+        Console.WriteLine("Effective settings (defaults shown where unspecified):");
+        Console.WriteLine($"  pscan          {config.App.ProcessScanIntervalMs}");
+        Console.WriteLine($"  diags          {config.App.DiagnosticsIntervalMs}");
+        Console.WriteLine($"  maxhistograms  {config.App.MaxHistograms}");
+        Console.WriteLine($"  maxtimeseries  {config.App.MaxTimeSeries}");
+        Console.WriteLine($"  excludeself    {config.App.ExcludeSelf}");
+        Console.WriteLine($"  loglevel       {config.App.MinimumLogLevel}");
+
+        Console.WriteLine();
+        if (config.Rules.Count == 0)
+        {
+            Console.WriteLine("Process rules: none (all eligible processes are monitored)");
+        }
+        else
+        {
+            Console.WriteLine($"Process rules: {config.RuleType.ToString().ToLowerInvariant()}");
+            foreach (var rule in config.Rules.Values)
+                Console.WriteLine($"  {rule.Filename}{(rule.SpecifierRegex is null ? "" : $": {rule.SpecifierRegex}")}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Diagnostic providers:");
+        foreach (var provider in config.DiagProviders)
+        {
+            var counters = provider.Counters is null ? "" : $"[{string.Join(",", provider.Counters)}]";
+            var filter = string.IsNullOrEmpty(provider.ProcessFilter) ? "" : $": {provider.ProcessFilter}";
+            Console.WriteLine($"  {provider.ProviderName}{counters}{filter}");
+        }
+
+        Console.WriteLine();
+        if (config.OtlpTargetNames.Count == 0)
+        {
+            Console.WriteLine("OTLP targets: none");
+        }
+        else
+        {
+            Console.WriteLine("OTLP targets:");
+            foreach (var name in config.OtlpTargetNames)
+            {
+                var endpoint = config.OtlpEndpoints[name];
+                Console.WriteLine($"  {name}: {endpoint.Endpoint} ({endpoint.Protocol}, timeout {endpoint.TimeoutMs}ms)");
+            }
+        }
+
+        Console.WriteLine(config.HttpEndpoint is null
+            ? "HTTP endpoint: none"
+            : $"HTTP endpoint: {config.HttpEndpoint.Endpoint} ({config.HttpEndpoint.Type})");
+
+        // not an error: list, procs and single-PID monitoring are all usable
+        // without an export target, but service mode refuses to start
+        if (config.OtlpTargetNames.Count == 0 && config.HttpEndpoint is null)
+        {
+            Console.WriteLine();
+            Console.WriteLine("WARNING: no export endpoints defined. Interactive commands will work,");
+            Console.WriteLine("but service mode requires at least one [otlp] target or an [http] section.");
+        }
+
         return 0;
     }
 
@@ -238,6 +329,7 @@ Commands:
   (none)        Run as a service (on Windows, permissions limitations may apply)
   list          Show eligible .NET processes with full details
   procs         Show eligible .NET processes (PID and command line only)
+  validate      Check uptime.conf and show the effective settings
   <PID>         Monitor a single process (console + OTel output)
   version       Show program version
   help          Show this help message");
