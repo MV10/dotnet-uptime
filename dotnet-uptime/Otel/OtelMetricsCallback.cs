@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
-namespace MV10.DotnetUptime.Otel;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// Records counter payloads on System.Diagnostics.Metrics instruments for OTel export.

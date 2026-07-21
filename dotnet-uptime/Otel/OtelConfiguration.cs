@@ -3,7 +3,7 @@ using OpenTelemetry;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 
-namespace MV10.DotnetUptime.Otel;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// Builds OpenTelemetry metrics export from ConfigParser: named OTLP push exporters

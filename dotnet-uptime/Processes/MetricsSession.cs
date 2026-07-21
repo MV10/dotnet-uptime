@@ -7,7 +7,7 @@ using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 
-namespace MV10.DotnetUptime.Processes;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// Manages a long-lived EventPipe connection to a single process, streaming counter events.

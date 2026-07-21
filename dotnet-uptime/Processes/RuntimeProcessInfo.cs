@@ -1,5 +1,5 @@
 
-namespace MV10.DotnetUptime.Processes;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// Data returned by the runtime's GetProcessInfo IPC command.

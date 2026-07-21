@@ -1,6 +1,5 @@
 
 using System.Diagnostics;
-using MV10.DotnetUptime.Processes;
 
 namespace MV10.DotnetUptime;
 

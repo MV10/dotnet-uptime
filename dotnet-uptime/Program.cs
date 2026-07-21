@@ -3,8 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Logging;
-using MV10.DotnetUptime.Otel;
-using MV10.DotnetUptime.Processes;
 
 namespace MV10.DotnetUptime;
 

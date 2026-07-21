@@ -1,6 +1,6 @@
 
 
-namespace MV10.DotnetUptime.Processes;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// Coordinates process tracking and their MetricsSessions.
