@@ -154,7 +154,17 @@ Note that the `diags` counter collection interval is _also_ the interval at whic
 
 The `[include]` and `[exclude]` sections are mutually exclusive and define which processes Uptime will monitor. When `[include]` is used, only matching processes are monitored and all others are ignored. When `[exclude]` is used, all eligible process are monitored except those matching anything in the list.
 
-List entries consist of the executable filename and an optional specifier. If a specifier is needed, add a colon then the specifier regex (using [.NET regex syntax](https://learn.microsoft.com/en-us/dotnet/standard/base-types/regular-expression-language-quick-reference), and leading/trailing whitespace is ignored) which must produce a valid Specifier result. (This means Linux applications with a colon in the app name can't be referenced, but this is not commonly a problem.)
+A list entry matches a process by _either_ its executable filename _or_ its managed entrypoint assembly name. Neither alone identifies every .NET process scenario. A native host such as `w3wp.exe` has no entrypoint assembly, so it can only be named by filename. Conversely, every framework-dependent application launched as `dotnet myapp.dll` has the filename `dotnet`, so filename is unreliable and only the assembly name (`myapp`) identifies it (an espeically common case on Linux). For self-contained and platform-specific builds the two are the same name, so either works.
+
+**Matching is case-insensitive.** When a process could match two different rules, the one naming the entrypoint assembly wins because it is more specific.
+
+```
+[include]
+w3wp.exe        # a native host, matched by filename
+myapp           # "dotnet myapp.dll", matched by entrypoint assembly
+```
+
+List entries consist of that name and an optional specifier. If a specifier is needed, add a colon then the specifier regex (using [.NET regex syntax](https://learn.microsoft.com/en-us/dotnet/standard/base-types/regular-expression-language-quick-reference), and leading/trailing whitespace is ignored) which must produce a valid Specifier result. (This means Linux applications with a colon in the app name can't be referenced, but this is not commonly a problem.)
 
 For example, the following will avoid reporting metrics from the IIS w3wp.exe instance hosting DefaultAppPool:
 
