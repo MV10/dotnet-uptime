@@ -327,56 +327,11 @@ class Program
 
 Commands:
   (none)        Run as a service (on Windows, permissions limitations may apply)
+  <PID>         Monitor a single process (OTel output + 1 per second console output)
   list          Show eligible .NET processes with full details
   procs         Show eligible .NET processes (PID and command line only)
   validate      Check uptime.conf and show the effective settings
-  <PID>         Monitor a single process (console + OTel output)
   version       Show program version
   help          Show this help message");
     }
-}
-
-/// <summary>
-/// Writes counter payloads to the console.
-/// </summary>
-class ConsoleMetricsCallback : IMetricsCallback
-{
-    public void OnCounterPayload(int pid, CounterPayload payload)
-    {
-        var tags = string.IsNullOrEmpty(payload.Tags) ? "" : $" [{payload.Tags}]";
-
-        var container = "";
-        if (payload.ContainerPID.HasValue || !string.IsNullOrEmpty(payload.ContainerID))
-        {
-            var parts = new List<string>();
-            if (payload.ContainerPID.HasValue) parts.Add($"container.pid={payload.ContainerPID.Value}");
-            if (!string.IsNullOrEmpty(payload.ContainerID)) parts.Add($"container.id={payload.ContainerID}");
-            container = $" {{{string.Join(" ", parts)}}}";
-        }
-
-        Console.WriteLine($"[{payload.Timestamp:HH:mm:ss}] {pid} {payload.ProviderName}/{payload.CounterName}: {payload.Value:F2} {payload.DisplayUnits}{tags}{container}");
-    }
-
-    public void OnSessionEnded(int pid)
-    {
-        Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] Session ended for PID {pid}");
-    }
-}
-
-/// <summary>
-/// Invokes an action when the monitored session ends, used by interactive mode
-/// to stop waiting once the target process exits.
-/// </summary>
-class SessionEndedCallback : IMetricsCallback
-{
-    private readonly Action onSessionEnded;
-
-    public SessionEndedCallback(Action onSessionEnded)
-    {
-        this.onSessionEnded = onSessionEnded;
-    }
-
-    public void OnCounterPayload(int pid, CounterPayload payload) { }
-
-    public void OnSessionEnded(int pid) => onSessionEnded();
 }

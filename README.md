@@ -27,10 +27,10 @@ Usage: dotnet-uptime [command]
 
 Commands:
   (none)        Run as a service (on Windows, permissions limitations may apply)
+  <PID>         Monitor a single process (OTel output + 1 per second console output)
   list          Show eligible .NET processes with full details
   procs         Show eligible .NET processes (PID and command line only)
   validate      Check uptime.conf and show the effective settings
-  <PID>         Monitor a single process (console + OTel output, 1 second interval)
   version       Show program version
   help          Show this help message
 ```
