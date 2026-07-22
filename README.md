@@ -36,6 +36,10 @@ Commands:
   help          Show this help message
 ```
 
+Only one service instance may run at a time. Starting a second one exits immediately with `dotnet-uptime is already running as a service` rather than starting, because two instances would each discover every process and export identical data to the same endpoints, doubling counters and producing conflicting gauge values without reporting any error. This applies only to service mode; the interactive commands are designed to run alongside a service.
+
+Interactive PID monitoring behaves slightly differently while a service is running. Because the service already collects and exports that process, the interactive session prints to the console but does **not** export, which would otherwise duplicate the service's data. A message says so at startup. With no service running, interactive monitoring exports normally, so it can be used on its own to push metrics without installing a service.
+
 Invoking the program without a command runs in service mode. On Windows the program will inherit your account's permissions. If your account does not have elevated permissions (usually this means Administrator), the program will not be able to monitor any elevated processes. This is probably fine for testing, but for normal use, see below to correctly install the program as a dedicated Windows Service, where it will run with elevated rights. No such concerns apply to usage on Linux.
 
 ### Windows Service

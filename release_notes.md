@@ -19,11 +19,12 @@
 * Add Uptime-specific metrics for OTLP export (`dotnet-uptime.self`)
 * Add `stats_metrics.md` repository document explaining Uptime's custom metrics
 * Prevent starting in service mode if it is already running
+* Prevent OTEL transmission on interactive PID monitoring if service is running
 * Windows - show permissions limitations reminder when running service as user
 * README warning about provider-wildcard overhead and filtering
 * README clarification that Uptime is not "transparent" to Collectors
 * Bugfix - provider process-filter
-* Bugfix - include/exclude specifier parsing
+* Bugfix - `[include]`/`[exclude]` specifier parsing
 * Refactor - config parsing to support validation (including startup)
 * Refactor - unified namespace (now that it's a single codebase)
 

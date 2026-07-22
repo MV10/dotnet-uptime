@@ -1,4 +1,5 @@
 using System.Reflection;
+using OpenTelemetry.Metrics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
@@ -153,14 +154,17 @@ class Program
 
         using var cts = new CancellationTokenSource();
 
-        using var otelCallback = new OtelMetricsCallback();
+        // a running service already monitors this process and exports the same series with
+        // the same attributes, so exporting from here as well would only duplicate it
+        using var meterProvider = TryBuildMeterProvider(config, otlpExportIntervalMs);
+        using var otelCallback = meterProvider is null ? null : new OtelMetricsCallback();
+
+        var callbacks = new List<IMetricsCallback> { new ConsoleMetricsCallback() };
+        if (otelCallback is not null) callbacks.Add(otelCallback);
         // the monitored process exiting ends the session; cancel so we exit
         // instead of blocking on Ctrl+C
-        var callback = new CompositeMetricsCallback(
-            new ConsoleMetricsCallback(),
-            otelCallback,
-            new SessionEndedCallback(() => cts.Cancel()));
-        using var meterProvider = OtelConfiguration.BuildMeterProvider(config, otlpExportIntervalMs);
+        callbacks.Add(new SessionEndedCallback(() => cts.Cancel()));
+        var callback = new CompositeMetricsCallback(callbacks.ToArray());
 
         // [processtags] needs the discovered process, which GetProcessInfo does not
         // supply (no filename, path or command line), so look it up once at startup
@@ -199,6 +203,38 @@ class Program
         return 0;
     }
 
+    /// <summary>
+    /// Builds the exporters for interactive monitoring, or returns null when they must be
+    /// skipped. Console output is the point of interactive monitoring, so anything that
+    /// prevents exporting is reported and stepped around rather than being fatal.
+    /// </summary>
+    static MeterProvider TryBuildMeterProvider(ConfigParser config, int otlpExportIntervalMs)
+    {
+        if (ControlPipe.IsServiceRunning(config))
+        {
+            Console.WriteLine("A dotnet-uptime service is running on this host, which already exports");
+            Console.WriteLine("metrics for this process. Console output only; nothing is exported from");
+            Console.WriteLine("this session, which would otherwise duplicate the service's data.");
+            Console.WriteLine();
+            return null;
+        }
+
+        try
+        {
+            return OtelConfiguration.BuildMeterProvider(config, otlpExportIntervalMs);
+        }
+        catch (Exception ex)
+        {
+            // the service may be running somewhere this process cannot see it, most often
+            // an elevated service whose control pipe an unprivileged caller cannot reach,
+            // in which case a configured [http] endpoint is already holding its port
+            Console.WriteLine($"Metrics export is unavailable: {ex.Message}");
+            Console.WriteLine("Continuing with console output only.");
+            Console.WriteLine();
+            return null;
+        }
+    }
+
     static int RunService(string[] args)
     {
         ConfigParser config;
@@ -232,6 +268,14 @@ class Program
         {
             Console.Error.WriteLine("Config error: no export endpoints defined.");
             Console.Error.WriteLine("Service mode requires at least one [otlp] target or an [http] section.");
+            return 1;
+        }
+
+        // two instances would both discover every process and export identical series to
+        // the same endpoints: counters double, gauges fight, and nothing reports an error
+        if (ControlPipe.IsServiceRunning(config))
+        {
+            Console.Error.WriteLine("dotnet-uptime is already running as a service.");
             return 1;
         }
 

@@ -1,4 +1,8 @@
 
+using CommandLineSwitchPipe;
+using Microsoft.Extensions.Logging;
+using System.Text;
+
 namespace MV10.DotnetUptime;
 
 /// <summary>
@@ -33,6 +37,41 @@ public static class ControlPipe
         => config.App.RequireElevatedSummary && OperatingSystem.IsLinux()
             ? SecurePipeName
             : OpenPipeName;
+
+    /// <summary>
+    /// Applies the pipe settings shared by the service and by any process looking for it.
+    /// Both ends must agree, so this is the only place they are set.
+    /// </summary>
+    public static void Configure(ConfigParser config, ILoggerFactory loggerFactory = null)
+    {
+        CommandLineSwitchServer.Options.PipeName = Name(config);
+        CommandLineSwitchServer.Options.LoggerFactory = loggerFactory;
+
+        // command lines carry connection strings and tokens; the TCP transport is
+        // documented as having no security whatsoever, so it stays disabled
+        CommandLineSwitchServer.Options.Advanced.UnsecuredPort = 0;
+
+        // the library defaults to ASCII, which silently replaces non-ASCII characters
+        // with question marks and would corrupt paths and command lines
+        CommandLineSwitchServer.Options.Advanced.Encoding = Encoding.UTF8;
+
+        // a listener that faults after coming up is retried, but one that can never be
+        // established is terminal; either way the library would forcibly exit the process,
+        // taking metrics collection down with the control channel, so the failure is
+        // surfaced as an exception for ControlPipeService to report and absorb
+        CommandLineSwitchServer.Options.Advanced.AutoRestartServer = true;
+        CommandLineSwitchServer.Options.Advanced.ExitOnServerFailure = false;
+    }
+
+    /// <summary>
+    /// True when a service instance is listening on the control pipe. Proves a responsive
+    /// listener rather than mere process existence, so a hung service still counts.
+    /// </summary>
+    public static bool IsServiceRunning(ConfigParser config)
+    {
+        Configure(config);
+        return CommandLineSwitchServer.TryConnect().GetAwaiter().GetResult();
+    }
 
     /// <summary>
     /// Creates the root-only directory holding the control pipe when elevatedsummary is on.

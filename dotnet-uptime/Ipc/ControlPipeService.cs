@@ -2,7 +2,6 @@
 using CommandLineSwitchPipe;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Text;
 
 namespace MV10.DotnetUptime;
 
@@ -15,31 +14,38 @@ public class ControlPipeService : BackgroundService
 {
     private readonly ConfigParser config;
     private readonly ILoggerFactory loggerFactory;
+    private readonly ILogger<ControlPipeService> logger;
 
-    public ControlPipeService(ConfigParser config, ILoggerFactory loggerFactory)
+    public ControlPipeService(ConfigParser config, ILoggerFactory loggerFactory, ILogger<ControlPipeService> logger)
     {
         this.config = config;
         this.loggerFactory = loggerFactory;
+        this.logger = logger;
     }
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        CommandLineSwitchServer.Options.PipeName = ControlPipe.Name(config);
-        CommandLineSwitchServer.Options.LoggerFactory = loggerFactory;
+        ControlPipe.Configure(config, loggerFactory);
 
-        // command lines carry connection strings and tokens; the TCP transport is
-        // documented as having no security whatsoever, so it stays disabled
-        CommandLineSwitchServer.Options.Advanced.UnsecuredPort = 0;
-
-        // the library defaults to ASCII, which silently replaces non-ASCII characters
-        // with question marks and would corrupt paths and command lines
-        CommandLineSwitchServer.Options.Advanced.Encoding = Encoding.UTF8;
-
-        // without this the library forcibly exits the process if the listener ever
-        // faults, which would take metrics collection down with the control channel
-        CommandLineSwitchServer.Options.Advanced.AutoRestartServer = true;
-
-        return CommandLineSwitchServer.StartServer(HandleSwitches, stoppingToken);
+        try
+        {
+            await CommandLineSwitchServer.StartServer(HandleSwitches, stoppingToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // normal shutdown
+        }
+        catch (Exception ex)
+        {
+            // reported rather than rethrown: a dead control channel only costs the commands
+            // aimed at this service, whereas letting it escape would stop the host and end
+            // metrics collection, which is the reason the service exists
+            logger.LogError(ex,
+                "The control pipe {PipeName} has failed, so commands directed at this service will not "
+                + "work. Metrics collection is unaffected and continues. A socket left behind by another "
+                + "user's instance can prevent binding, in which case removing it and restarting resolves this.",
+                ControlPipe.Name(config));
+        }
     }
 
     // Runs on the pipe listener thread. Commands are added by the features that need
