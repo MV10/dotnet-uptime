@@ -235,6 +235,14 @@ class Program
             return 1;
         }
 
+        // done before the host is built so a failure is a clean refusal to start rather
+        // than a background service fault after the rest of the service is running
+        if (!ControlPipe.TryPrepareDirectory(config, out var pipeError))
+        {
+            Console.Error.WriteLine($"Control pipe error: {pipeError}");
+            return 1;
+        }
+
         // created here rather than resolved from DI because the exporter wrapper needs
         // it while the service collection is still being configured
         var selfMetrics = new SelfMetrics();
@@ -255,6 +263,7 @@ class Program
                 // (it begins listening in its constructor) and disposes it on shutdown
                 services.AddHostedService<OtelDiagnosticsListener>();
                 services.AddHostedService<ProcessScannerService>();
+                services.AddHostedService<ControlPipeService>();
                 OtelConfiguration.ConfigureOpenTelemetry(services, config, config.App.DiagnosticsIntervalMs, selfMetrics);
             })
             .Build();
@@ -352,11 +361,15 @@ class Program
         Console.WriteLine("VALID");
         Console.WriteLine();
         Console.WriteLine("Effective settings (defaults shown where unspecified):");
-        Console.WriteLine($"  pscan          {config.App.ProcessScanIntervalMs}");
-        Console.WriteLine($"  diags          {config.App.DiagnosticsIntervalMs}");
-        Console.WriteLine($"  maxhistograms  {config.App.MaxHistograms}");
-        Console.WriteLine($"  maxtimeseries  {config.App.MaxTimeSeries}");
-        Console.WriteLine($"  loglevel       {config.App.MinimumLogLevel}");
+        Console.WriteLine($"  pscan            {config.App.ProcessScanIntervalMs}");
+        Console.WriteLine($"  diags            {config.App.DiagnosticsIntervalMs}");
+        Console.WriteLine($"  maxhistograms    {config.App.MaxHistograms}");
+        Console.WriteLine($"  maxtimeseries    {config.App.MaxTimeSeries}");
+        Console.WriteLine($"  loglevel         {config.App.MinimumLogLevel}");
+        Console.WriteLine($"  elevatedsummary  {config.App.RequireElevatedSummary.ToString().ToLowerInvariant()}");
+
+        // derived rather than configured, but the elevatedsummary setting moves it
+        Console.WriteLine($"  control pipe     {ControlPipe.Name(config)}");
 
         Console.WriteLine();
         if (config.Rules.Count == 0)

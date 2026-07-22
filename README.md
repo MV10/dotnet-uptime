@@ -147,6 +147,13 @@ The `[app]` section contains settings that control overall application behavior.
 | `maxhistograms` | 10 | Max histogram instruments tracked per process |
 | `maxtimeseries` | 1000 | Max time series tracked per process |
 | `loglevel` | warning | Minimum log level: `trace`, `debug`, `information`, `warning`, `error`, `critical`, or `none` |
+| `elevatedsummary` | false | Restrict the `summary` command to elevated callers (see below) |
+
+The `summary` command reports the command lines of monitored processes, which routinely carry passwords, tokens and connection strings. Unlike `list` and `procs`, which run their own discovery under the calling user's privileges, `summary` asks the running service — so an unprivileged caller would be borrowing the service's view of every process on the host. The `elevatedsummary` setting exists to close that gap, and it has a deployment consequence worth understanding before enabling it:
+
+- **Linux, `true`** — the control pipe moves from the default temporary-file location to `/run/dotnet-uptime/`, a directory Uptime creates with `0700` permissions. The operating system then denies unprivileged processes any access to the pipe. **This requires running the service as root**; it will refuse to start otherwise, naming this setting as the reason.
+- **Linux, `false`** — the pipe stays in the default location, where the underlying library makes it accessible to all users by design. The service runs as any user.
+- **Windows** — named pipes have no containing directory to restrict, so this setting is a caller-side check only. An elevated caller is required, but the check is a guardrail rather than an operating-system boundary.
 
 Note that the `diags` counter collection interval is _also_ the interval at which data is pushed to OTLP collectors. When running in interactive mode monitoring a specific PID (console output), the rate is always 1 second, but any configured OTLP collection will continue at the configured rate. Collectors are expected to downsample to whatever data they actually wish to process and store.
 

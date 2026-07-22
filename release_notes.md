@@ -2,18 +2,24 @@
 
 #### v1.0.1 2026-07-??
 
-* Add `loglevel` setting to `[app]` section (default is Warning)
-* Add `validate` interactive command to check `uptime.conf`
-* Improve tag splitting (opened related [bug report](https://github.com/dotnet/diagnostics/issues/5935))
-* Add `[processtags]` config to attach target data like filename, etc.
-* Add `[hosttags]` config to attach server data like hostname, env-vars, etc.
-* Add assembly-matching to include/exclude logic (as well as filename)
+* Additional interactive commands:
+  * `validate` checks the `uptime.conf` configuration file
+  * `stats` outputs Uptime's own metrics to console
+  * `summary` outputs Uptime's monitored processes info to console
+* Additional configuration file changes: 
+  * `[app] loglevel` (default is Warning)
+  * `[app] elevatedsummary` to require root/Admin rights for `summary` (default false)
+  * `[app] redactpayload` sensitive-data redaction for OTLP `process.command_line` (default true)
+  * `[processtags]` section, attaches target process data like filename, etc.
+  * `[hosttags]` section, attaches server data like hostname, env-vars, etc.
+  * `[include]` and `[exclude]` assembly-matching logic (supplements filename-matching)
+* Improve tag splitting (opened related .NET [bugs reported](https://github.com/dotnet/diagnostics/issues/5935))
 * Improved logging, added a console logger for service mode output
-* Rejected-PID cache avoids re-querying certain processes unnecessarily
+* Rejected-PID caching avoids re-querying certain processes unnecessarily
 * Add Uptime-specific metrics for OTLP export (`dotnet-uptime.self`)
-* Add `stats_metrics` repository document explaining Uptime's custom metrics
-* Add `stats` interactive command to output Uptime's own metrics to console
-* Show Windows permissions reminder when running service as user
+* Add `stats_metrics.md` repository document explaining Uptime's custom metrics
+* Prevent starting in service mode if it is already running
+* Windows - show permissions limitations reminder when running service as user
 * README warning about provider-wildcard overhead and filtering
 * README clarification that Uptime is not "transparent" to Collectors
 * Bugfix - provider process-filter
