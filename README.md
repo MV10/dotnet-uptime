@@ -155,7 +155,7 @@ The `[app]` section contains settings that control overall application behavior.
 
 Note that the `diags` counter collection interval is _also_ the interval at which data is pushed to OTLP collectors. When running in interactive mode monitoring a specific PID (console output), the rate is always 1 second, but any configured OTLP collection will continue at the configured rate. Collectors are expected to downsample to whatever data they actually wish to process and store.
 
-The `elevatedsummary` setting secures access to the `summary` command because it reports the command lines of monitored processes, which routinely carry passwords, tokens and connection strings. Unlike `list` and `procs`, which run their own discovery under the calling user's privileges, `summary` asks the running service, so an unprivileged caller would be borrowing the service's view of every process on the host. (On Linux, it is secured at the OS level. On Windows, it is only secured internally by Uptime; a malicious application could still connect to Uptime's named pipe and read process command lines.)
+The `elevatedsummary` setting secures access to the `summary` command because it reports the command lines of monitored processes, which routinely carry passwords, tokens and connection strings. Unlike `list` and `procs`, which run their own discovery under the calling user's privileges, `summary` asks the running service, so an unprivileged caller would be borrowing the service's view of every process on the host. On Linux, it is secured at the OS level. On Windows, it is only secured internally by Uptime itself. When this setting is enabled, access to Uptime and its config should also require elevated permissions.
 
 ### [include] and [exclude] Config Sections
 
