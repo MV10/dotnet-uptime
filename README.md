@@ -143,9 +143,9 @@ Unlike systemd and the Windows Service, SysV Init has no log collection of its o
 
 ## Configuration
 
-A basic, partially-completed configuration file is included in the release archives. Refer to this documentation and the comments in the configuration file to customize it to your needs.
+A basic, partially-completed [configuration file](https://github.com/MV10/dotnet-uptime/blob/master/dotnet-uptime/uptime.conf) is included in the release archives. Refer to this documentation and the comments in the configuration file to customize it to your needs.
 
-Configuration is a simple text file named `uptime.conf` in the same directory as the application. The repository has a [sample](https://github.com/MV10/dotnet-uptime/blob/master/dotnet-uptime/uptime.conf) configuration file but this is not packaged with the release files. For production deployments, the application directory should require elevated rights since the configuration file could be modified to allow a user access to sensitive data (primarily, passwords and other secrets visible in process command lines).
+Configuration is a simple text file named `uptime.conf` in the same directory as the application. For production deployments, the application directory should require elevated rights since the configuration file could be modified to allow a user access to sensitive data (primarily, passwords and other secrets visible in process command lines).
 
 Config defines behaviors like process polling frequency, OTel endpoint details, and process include/exclude specifications, as well as diagnostics sources, required metrics, and associated metadata. Lines or any trailing content prefixed by a hash symbol (`#`) are treated as comments and disregarded. Settings are grouped into `[sections]` exclusively containing either `key=value` pairs or lists of values. Blank lines are ignored and leading/trailing whitespace is ignored. The application will not start in service mode without a config file, but the interactive commands will work with default values.
 
