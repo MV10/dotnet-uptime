@@ -165,13 +165,13 @@ The `[app]` section contains settings that control overall application behavior.
 
 Note that the `diags` counter collection interval is _also_ the interval at which data is pushed to OTLP collectors. When running in interactive mode monitoring a specific PID (console output), the rate is always 1 second, but any configured OTLP collection will continue at the configured rate. Collectors are expected to downsample to whatever data they actually wish to process and store.
 
-The `summarycommand` setting controls the `summary` command, which reports via named pipe the command lines of monitored processes. As such, it may expose passwords, tokens and connection strings. Unlike `list` and `procs`, which run their own discovery under the calling user's privileges, `summary` asks the running service, so an unprivileged caller would be "borrowing" the service's view of every process on the host. `disabled` (the default) refuses the command entirely. `elevated` requires an elevated user account (root on Linux, or an Administrator role on Windows). Linux enforces this at the OS level, but on Windows it is only a check within Uptime itself (in theory, someone could query this data by remotely connecting to the Windows named pipe over the network).
+The `summary` command uses a named pipe to report the command lines of monitored processes. As such, it may expose passwords, tokens and connection strings. Unlike `list` and `procs`, which run their own discovery under the calling user's privileges, `summary` asks the running service, so an unprivileged caller would be "borrowing" the service's view of every process on the host. Therefore a `summarycommand` setting of `disabled` (the default) refuses the command entirely. The `elevated` option requires an elevated-permissions user account (root on Linux, or an Administrator role on Windows). Linux enforces elevated access at the OS level, but on Windows it is only a check within Uptime itself (in theory, someone could query this data by remotely connecting to the Windows named pipe over the network).
 
 ### [include] and [exclude] Config Sections
 
 The `[include]` and `[exclude]` sections are mutually exclusive and define which processes Uptime will monitor. When `[include]` is used, only matching processes are monitored and all others are ignored. When `[exclude]` is used, all eligible process are monitored except those matching anything in the list.
 
-A list entry matches a process by _either_ its executable filename _or_ its managed entrypoint assembly name. Neither alone identifies every .NET process scenario. A native host such as `w3wp.exe` has no entrypoint assembly, so it can only be named by filename. Conversely, every framework-dependent application launched as `dotnet myapp.dll` has the filename `dotnet`, so filename is unreliable and only the assembly name (`myapp`) identifies it (an espeically common case on Linux). For self-contained and platform-specific builds the two are the same name, so either works.
+Items in these sections match a process by _either_ its executable filename _or_ its managed entrypoint assembly name. Neither alone identifies every .NET process scenario. A native host such as `w3wp.exe` has no entrypoint assembly, so it can only be named by filename. Conversely, every framework-dependent application launched as `dotnet myapp.dll` has the filename `dotnet`, so filename is unreliable and only the assembly name (`myapp`) identifies it (an espeically common case on Linux). For self-contained and platform-specific builds the two are the same name, so either works.
 
 **Matching is case-insensitive.** When a process could match two different rules, the one naming the entrypoint assembly wins because it is more specific.
 
@@ -225,7 +225,7 @@ The process filter is enforced only during service-mode scanning, where Uptime c
 
 #### Uptime's own metrics
 
-Uptime publishes metrics about its own operation — processes monitored, discovery pass duration, export success and timing — on the `dotnet-uptime.self` meter. These are documented in [`stats_metrics.md`](https://github.com/MV10/dotnet-uptime/blob/master/stats_metrics.md).
+Uptime publishes metrics about its own operation (processes monitored, discovery pass duration, export success and timing) on the `dotnet-uptime.self` meter. These are documented in [`stats_metrics.md`](https://github.com/MV10/dotnet-uptime/blob/master/stats_metrics.md).
 
 They are a custom meter like any other, so they are collected only if listed here, and only if Uptime is not excluded by the process rules. Because the sample configuration excludes Uptime by default, **these metrics are not exported unless you opt in**:
 
@@ -279,7 +279,7 @@ Where a monitored application publishes a tag whose name collides with one of Up
 
 ### [hosttags] Config Section
 
-Where `[processtags]` describes each monitored process, `[hosttags]` describes the host they run on. These are static `key=value` pairs you define, constant for the whole Uptime instance, and they are emitted as OTel **resource attributes** rather than as tags on each measurement — OTLP transmits resource attributes once per export batch instead of once per data point, which matters at fleet scale.
+Where `[processtags]` describes each monitored process, `[hosttags]` describes the host they run on. These are static `key=value` pairs you define, constant for the whole Uptime instance, and they are emitted as OTel **resource attributes** rather than as tags on each measurement; OTLP transmits resource attributes once per export batch instead of once per data point, which matters at fleet scale.
 
 `host.name` and `os.type` are always emitted whether or not this section exists, because metrics with no host attribution cannot be attributed to anything. Listing either name here overrides the built-in value.
 
@@ -297,11 +297,11 @@ Values may contain `%token%` substitutions:
 | `%machinename%` | Machine name |
 | `%fqdn%` | Fully-qualified domain name, falling back to the machine name if DNS cannot answer |
 | `%osversion%` | OS description string |
-| `%osname%` | `windows`, `linux`, or `darwin` |
+| `%osname%` | `windows`, `linux` or `unsupported` |
 | `%uptimeversion%` | This application's version |
 | `%env:NAME%` | An environment variable |
 
-An unrecognized token is a configuration error. A referenced environment variable that is not set is reported as a warning by `validate` — which may be running as a different user with a different environment — but service mode refuses to start, because an empty tag value would silently mislabel every metric the host exports.
+An unrecognized token is a configuration error. A referenced environment variable that is not set is reported as a warning by `validate` (which may be running as a different user with a different environment), but service mode will refuse to start because an empty tag value would silently mislabel every metric the host exports.
 
 Note that `%env:NAME%` reads the environment of the Uptime process, not of any monitored process. Under systemd that means whatever the Uptime unit file sets, so an application-specific variable such as `ASPNETCORE_ENVIRONMENT` will not resolve unless it is also set for Uptime itself.
 
@@ -354,7 +354,7 @@ For a Prometheus endpoint (which is the only standard HTTP format defined today)
 
 ## Redaction Behavior
 
-Process command lines routinely carry connection strings, tokens and passwords. The `summary` command reports command lines from the running service, so it _always_ redacts them before the text leaves the service — there is no setting to turn this off. Redaction replaces the value of any argument that names a secret (`--password`, `--api-key`, `client-secret`, a `token`, and similar), the sensitive members of an embedded connection string (the `Password=` in `Server=db;Password=x` is replaced while `Server=` and `Database=` are kept so the process is still identifiable), the password in a `scheme://user:password@host` URL, and the value token following a bare secret flag such as `--password hunter2` or `-p hunter2`.
+Process command lines routinely carry connection strings, tokens and passwords. The `summary` command reports command lines from the running service, so it _always_ redacts them before the text leaves the service; there is no setting to turn this off. Redaction replaces the value of any argument that names a secret (`--password`, `--api-key`, `client-secret`, a `token`, and similar), the sensitive members of an embedded connection string (the `Password=` in `Server=db;Password=x` is replaced while `Server=` and `Database=` are kept so the process is still identifiable), the password in a `scheme://user:password@host` URL, and the value token following a bare secret flag such as `--password hunter2` or `-p hunter2`.
 
 The `list` and `procs` commands do _not_ redact. They run their own discovery under your own account, so they only show command lines the operating system already lets you read, and are the way to see an unredacted command line when you legitimately need it.
 
