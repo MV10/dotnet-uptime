@@ -1,6 +1,6 @@
 # Release Notes
 
-#### v1.0.1 2026-07-??
+#### v1.0.1 2026-07-23
 
 * Additional interactive commands:
   * `validate` checks the `uptime.conf` configuration file
