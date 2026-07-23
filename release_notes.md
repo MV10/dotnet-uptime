@@ -14,7 +14,8 @@
   * `[hosttags]` section, attaches server data like hostname, env-vars, etc.
   * `[include]` and `[exclude]` assembly-matching logic (supplements filename-matching)
 * Improve tag splitting (opened related .NET [bugs reported](https://github.com/dotnet/diagnostics/issues/5935))
-* Improved logging, added a console logger for service mode output
+* Full code audit to ensure full coverage for error handling and logging
+* Added a console logger for service mode output
 * Rejected-PID caching avoids re-querying certain processes unnecessarily
 * Add Uptime-specific metrics for OTLP export (`dotnet-uptime.self`)
 * Add `stats_metrics.md` repository document explaining Uptime's custom metrics
