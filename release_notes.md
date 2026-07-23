@@ -19,6 +19,7 @@
 * Add Uptime-specific metrics for OTLP export (`dotnet-uptime.self`)
 * Add `stats_metrics.md` repository document explaining Uptime's custom metrics
 * Add sensitive-data redaction rules for command-line content
+* Add broken diagnostic pipe re-connect rules and logging
 * Prevent starting in service mode if it is already running
 * Prevent OTEL transmission on interactive PID monitoring if service is running
 * Windows - show permissions limitations reminder when running service as user

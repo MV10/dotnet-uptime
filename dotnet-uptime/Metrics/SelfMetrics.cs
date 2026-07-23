@@ -18,6 +18,7 @@ public sealed class SelfMetrics : IDisposable
     private readonly Counter<long> sessionsStarted;
     private readonly Counter<long> sessionsEnded;
     private readonly Counter<long> sessionsFailed;
+    private readonly Counter<long> sessionsReconnected;
     private readonly Counter<long> measurementsReceived;
     private readonly Counter<long> exportAttempts;
     private readonly Counter<long> exportFailures;
@@ -74,6 +75,9 @@ public sealed class SelfMetrics : IDisposable
         sessionsFailed = meter.CreateCounter<long>("uptime.sessions.failed",
             "{session}", "Sessions ended on an IPC or EventPipe error");
 
+        sessionsReconnected = meter.CreateCounter<long>("uptime.sessions.reconnects",
+            "{session}", "Dropped sessions that were reconnected");
+
         measurementsReceived = meter.CreateCounter<long>("uptime.measurements.received",
             "{measurement}", "Counter payloads received from monitored processes");
 
@@ -110,6 +114,8 @@ public sealed class SelfMetrics : IDisposable
         sessionsFailed.Add(1);
         Interlocked.Increment(ref sessionsFailedTotal);
     }
+
+    public void SessionReconnected() => sessionsReconnected.Add(1);
 
     public void MeasurementReceived() => measurementsReceived.Add(1);
 

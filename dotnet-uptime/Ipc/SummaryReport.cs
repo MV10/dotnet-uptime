@@ -13,8 +13,9 @@ public static class SummaryReport
     public static string Build(ProcessManager processManager, SelfMetrics metrics)
     {
         var monitored = processManager.SnapshotMonitored();
-        var connected = monitored.Count(p => p.Connected);
-        var faulted = monitored.Count - connected;
+        var connected = monitored.Count(p => p.Connected && !p.Reconnecting);
+        var reconnecting = monitored.Count(p => p.Connected && p.Reconnecting);
+        var faulted = monitored.Count(p => !p.Connected);
         var uptime = DateTime.UtcNow - metrics.StartedUtc;
         var attempts = metrics.ExportAttemptsTotal;
         var failures = metrics.ExportFailuresTotal;
@@ -24,7 +25,7 @@ public static class SummaryReport
         report.AppendLine();
         report.AppendLine($"Uptime            {FormatUptime(uptime)}");
         report.AppendLine($"Monitored         {monitored.Count} process(es)");
-        report.AppendLine($"Sessions          {connected} connected, {faulted} faulted");
+        report.AppendLine($"Sessions          {connected} connected, {reconnecting} reconnecting, {faulted} faulted");
         report.AppendLine($"Last scan         {metrics.LastDiscoveryMs:0.0} ms");
         report.AppendLine($"Exports           {attempts} attempted, {failures} failed");
         report.AppendLine($"Session failures  {metrics.SessionsFailedTotal}");
@@ -37,12 +38,15 @@ public static class SummaryReport
         }
 
         report.AppendLine("Monitored processes:");
-        report.AppendLine($"  {"PID",-8}{"STATE",-11}COMMAND");
+        report.AppendLine($"  {"PID",-8}{"STATE",-13}COMMAND");
         foreach (var p in monitored)
-            report.AppendLine($"  {p.Process.PID,-8}{(p.Connected ? "connected" : "faulted"),-11}{CommandLineRedactor.Redact(p.Process)}");
+            report.AppendLine($"  {p.Process.PID,-8}{State(p),-13}{CommandLineRedactor.Redact(p.Process)}");
 
         return report.ToString().TrimEnd();
     }
+
+    private static string State(MonitoredProcessInfo p)
+        => !p.Connected ? "faulted" : p.Reconnecting ? "reconnecting" : "connected";
 
     private static string FormatUptime(TimeSpan uptime)
         => uptime.TotalDays >= 1

@@ -124,7 +124,7 @@ public class ProcessManager
         lock (syncLock)
         {
             return processes.Values
-                .Select(p => new MonitoredProcessInfo(p.Process, p.Session.IsRunning))
+                .Select(p => new MonitoredProcessInfo(p.Process, p.Session.IsRunning, p.Session.IsReconnecting))
                 .OrderBy(p => p.Process.PID)
                 .ToList();
         }

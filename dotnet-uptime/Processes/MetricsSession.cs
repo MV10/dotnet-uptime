@@ -23,6 +23,13 @@ public class MetricsSession : IDisposable
     // its own session's events from those of another tool attached to the same process
     private const string SharedSessionId = "SHARED";
 
+    // reconnect policy for a session that drops while its process is still alive. A
+    // sliding window means occasional blips recover forever, while a genuinely flapping
+    // session gives up rather than thrashing. Hardcoded by design; not worth a setting.
+    private const int MaxFaultsInWindow = 3;
+    private static readonly TimeSpan FaultWindow = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan ReconnectBackoff = TimeSpan.FromSeconds(5);
+
     private readonly int pid;
     private readonly int? containerPid;
     private readonly string containerId;
@@ -43,11 +50,20 @@ public class MetricsSession : IDisposable
     private EventPipeSession session;
     private bool disposed;
 
+    // reconnect state, touched only by the single Run loop
+    private readonly string processAssemblyName;
+    private readonly Queue<DateTime> recentFaults = new();
+    private volatile bool reconnecting;
+
     // deduplication: providers that have sent Meter events supersede EventCounters
     private readonly ConcurrentDictionary<string, bool> meterProviders = new(StringComparer.OrdinalIgnoreCase);
 
     public int PID => pid;
     public bool IsRunning => processingTask is not null && !processingTask.IsCompleted;
+
+    // true while a dropped session is being re-established; distinguishes a transient
+    // reconnect from a healthy connection in the summary command
+    public bool IsReconnecting => reconnecting && IsRunning;
 
     // processFilename gates per-provider process filters from [diags]; pass null (interactive
     // single-PID monitoring) to ignore those filters and apply every configured provider
@@ -64,6 +80,7 @@ public class MetricsSession : IDisposable
             containerPid = nsPid;
         containerId = ProcessDiscovery.GetContainerId(pid);
         this.callback = callback;
+        this.processAssemblyName = processAssemblyName;
         providers = processFilename is null
             ? config.DiagProviders
             : config.DiagProviders.Where(spec => spec.MatchesProcess(processFilename, processAssemblyName)).ToList();
@@ -98,31 +115,109 @@ public class MetricsSession : IDisposable
     {
         try
         {
+            while (!cts.IsCancellationRequested)
+            {
+                var faulted = RunSession();
+
+                if (cts.IsCancellationRequested) break;
+
+                // a clean stream end, or the process is simply gone: not a fault to retry.
+                // ProcessManager removes a departed process on its next discovery pass.
+                if (!faulted || !ProcessIsAlive()) break;
+
+                selfMetrics?.SessionFailed();
+
+                if (!RegisterFaultAndShouldRetry())
+                {
+                    reconnecting = false;
+                    logger?.LogError(
+                        "Giving up on PID {Pid} ({Assembly}) after {Count} session failures within {Minutes} minutes; "
+                        + "it is no longer monitored until the process restarts.",
+                        pid, processAssemblyName, MaxFaultsInWindow, FaultWindow.TotalMinutes);
+                    break;
+                }
+
+                reconnecting = true;
+                selfMetrics?.SessionReconnected();
+                logger?.LogWarning("PID {Pid} ({Assembly}) session dropped; reconnecting in {Seconds}s.",
+                    pid, processAssemblyName, ReconnectBackoff.TotalSeconds);
+
+                // WaitOne returns true only if the token was signaled during the backoff
+                if (cts.Token.WaitHandle.WaitOne(ReconnectBackoff)) break;
+            }
+        }
+        finally
+        {
+            // fires once, when the session truly ends (shutdown, give-up, or process gone),
+            // not on each transient reconnect
+            callback.OnSessionEnded(pid);
+        }
+    }
+
+    /// <summary>
+    /// Runs one EventPipe connection to completion. Returns true if it ended on a fault
+    /// (IPC error while the connection was live), false for a clean stream end or a
+    /// cancellation. Blocks in source.Process() until the stream closes.
+    /// </summary>
+    private bool RunSession()
+    {
+        EventPipeSession current = null;
+        try
+        {
             var client = CreateClient();
 
             var pipeProviders = BuildEventPipeProviders(client);
-            session = client.StartEventPipeSession(pipeProviders, requestRundown: false);
+            current = client.StartEventPipeSession(pipeProviders, requestRundown: false);
+            session = current;
+            reconnecting = false;
 
-            using var source = new EventPipeEventSource(session.EventStream);
+            using var source = new EventPipeEventSource(current.EventStream);
 
             source.Dynamic.All += OnTraceEvent;
 
             source.Process();
+            return false;
         }
         catch (Exception) when (cts.IsCancellationRequested)
         {
-            // expected shutdown
+            return false;
         }
         catch (Exception)
         {
-            // process exited or IPC failure; a clean shutdown is handled above, so
-            // reaching here means the session ended for a reason we did not choose
-            selfMetrics?.SessionFailed();
+            return true;
         }
         finally
         {
-            callback.OnSessionEnded(pid);
+            try { current?.Dispose(); } catch { }
+            if (ReferenceEquals(session, current)) session = null;
         }
+    }
+
+    // distinguishes a session that dropped (process alive, worth reconnecting) from one
+    // whose process has exited (nothing to reconnect to)
+    private bool ProcessIsAlive()
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // true if the session should be reconnected. Ages fault timestamps out of the window,
+    // so isolated failures recover indefinitely while a burst trips the breaker.
+    private bool RegisterFaultAndShouldRetry()
+    {
+        var now = DateTime.UtcNow;
+        recentFaults.Enqueue(now);
+        while (recentFaults.Count > 0 && now - recentFaults.Peek() > FaultWindow)
+            recentFaults.Dequeue();
+
+        return recentFaults.Count < MaxFaultsInWindow;
     }
 
     /// <summary>
