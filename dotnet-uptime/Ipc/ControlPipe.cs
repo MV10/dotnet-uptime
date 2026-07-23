@@ -74,6 +74,18 @@ public static class ControlPipe
     }
 
     /// <summary>
+    /// Sends a command to the running service and returns its reply. False means no
+    /// service was listening; the caller reports that rather than a blank response.
+    /// </summary>
+    public static bool TrySend(ConfigParser config, string[] args, out string response)
+    {
+        Configure(config);
+        var delivered = CommandLineSwitchServer.TrySendArgs(args).GetAwaiter().GetResult();
+        response = CommandLineSwitchServer.QueryResponse;
+        return delivered;
+    }
+
+    /// <summary>
     /// Creates the root-only directory holding the control pipe when elevatedsummary is on.
     /// No-op otherwise. Returns false with a message the caller should report before refusing
     /// to start; the alternative is serving a credential-bearing pipe from an open location.

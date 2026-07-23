@@ -31,16 +31,17 @@ Commands:
   list          Show eligible .NET processes with full details
   procs         Show eligible .NET processes (PID and command line only)
   stats         Show the running service's own operational metrics
+  summary       Show a snapshot of the running service's monitored processes
   validate      Check uptime.conf and show the effective settings
   version       Show program version
   help          Show this help message
 ```
 
+Invoking the program without a command runs in service mode. On Windows the program will inherit your account's permissions. If your account does not have elevated permissions (usually this means Administrator), the program will not be able to monitor any elevated processes. This is probably fine for testing, but for normal use, see below to correctly install the program as a dedicated Windows Service, where it will run with elevated rights. No such concerns apply to usage on Linux.
+
 Only one service instance may run at a time. Starting a second one exits immediately with `dotnet-uptime is already running as a service` rather than starting, because two instances would each discover every process and export identical data to the same endpoints, doubling counters and producing conflicting gauge values without reporting any error. This applies only to service mode; the interactive commands are designed to run alongside a service.
 
 Interactive PID monitoring behaves slightly differently while a service is running. Because the service already collects and exports that process, the interactive session prints to the console but does **not** export, which would otherwise duplicate the service's data. A message says so at startup. With no service running, interactive monitoring exports normally, so it can be used on its own to push metrics without installing a service.
-
-Invoking the program without a command runs in service mode. On Windows the program will inherit your account's permissions. If your account does not have elevated permissions (usually this means Administrator), the program will not be able to monitor any elevated processes. This is probably fine for testing, but for normal use, see below to correctly install the program as a dedicated Windows Service, where it will run with elevated rights. No such concerns apply to usage on Linux.
 
 ### Windows Service
 
@@ -144,7 +145,7 @@ Config defines process polling frequency, OTel endpoint details, process include
 
 The `[app]` section contains settings that control overall application behavior.
 
-| Setting | Default | Description                                                                  |
+| Setting | Default | Description |
 |---------|---------|---|
 | `pscan` | 15000 | Process scan interval, milliseconds |
 | `diags` | 15000 | Counter collection interval, milliseconds |
@@ -341,3 +342,13 @@ endpoint=http://localhost:9464
 ```
 
 For a Prometheus endpoint (which is the only standard HTTP format defined today), only `localhost` is supported (or equivalents, `127.0.0.1` or `::1`). This endpoint is _not_ secure and is typically only suited for development purposes. The OTel team has expressly stated the built-in HTTP listener will _never_ be suited for production usage. For secure, broadly accessible Prometheus data, a separate OTel collector should be used to expose Prometheus data. That is beyond the scope of the Uptime service.
+
+## Redaction Behavior
+
+Process command lines routinely carry connection strings, tokens and passwords. The `summary` command reports command lines from the running service, so it _always_ redacts them before the text leaves the service — there is no setting to turn this off. Redaction replaces the value of any argument that names a secret (`--password`, `--api-key`, `client-secret`, a `token`, and similar), the sensitive members of an embedded connection string (the `Password=` in `Server=db;Password=x` is replaced while `Server=` and `Database=` are kept so the process is still identifiable), the password in a `scheme://user:password@host` URL, and the value token following a bare secret flag such as `--password hunter2` or `-p hunter2`.
+
+The `list` and `procs` commands do _not_ redact. They run their own discovery under your own account, so they only show command lines the operating system already lets you read, and are the way to see an unredacted command line when you legitimately need it.
+
+Redaction is a mitigation, not a guarantee. A secret passed positionally, with no flag name and no recognizable shape (`myapp hunter2`), cannot be detected, and an unusual secret key name may not match. There is also a platform difference. On Linux, arguments are reported as a list of separate data elements, so arguments are fully redacted even when a secret contains spaces. On Windows, the OS exposes only a single flattened command-line string, which must be split back into arguments in code, so a secret containing an unquoted space may not be fully redacted.
+
+Command lines exported as telemetry through the optional `commandline` process tag are handled separately and are _not_ redacted; leave that tag disabled when exporting to a backend without its own sanitization rules, as its configuration warning states.

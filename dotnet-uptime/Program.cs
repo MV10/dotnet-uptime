@@ -44,6 +44,9 @@ class Program
             case "stats":
                 return ShowStats();
 
+            case "summary":
+                return ShowSummary();
+
             case "validate":
                 return ValidateConfig();
 
@@ -379,6 +382,40 @@ class Program
     }
 
     /// <summary>
+    /// Asks the running service for a snapshot of its state: monitored processes and their
+    /// session state, uptime, last scan duration, and export counts. Command lines in the
+    /// reply are redacted by the service before they cross the pipe.
+    /// </summary>
+    static int ShowSummary()
+    {
+        ConfigParser config;
+        try
+        {
+            config = ConfigParser.Load();
+        }
+        catch (ConfigMissingException)
+        {
+            // the pipe name derives from [app] elevatedsummary; with no config the default
+            // (unelevated) posture is correct, which is what an empty config yields
+            config = ConfigParser.Parse(Array.Empty<string>());
+        }
+        catch (ConfigException ex)
+        {
+            Console.WriteLine($"Config error: {ex.Message}");
+            return 1;
+        }
+
+        if (!ControlPipe.TrySend(config, new[] { "summary" }, out var response))
+        {
+            Console.WriteLine("No running dotnet-uptime service was found.");
+            return 1;
+        }
+
+        Console.WriteLine(response);
+        return 0;
+    }
+
+    /// <summary>
     /// Reports every problem in uptime.conf and echoes the effective settings.
     /// Returns non-zero when the file is missing or invalid so deployment
     /// scripts can gate on the result.
@@ -518,6 +555,7 @@ Commands:
   list          Show eligible .NET processes with full details
   procs         Show eligible .NET processes (PID and command line only)
   stats         Show the running service's own operational metrics
+  summary       Show a snapshot of the running service's monitored processes
   validate      Check uptime.conf and show the effective settings
   version       Show program version
   help          Show this help message");

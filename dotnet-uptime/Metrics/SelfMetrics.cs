@@ -30,6 +30,30 @@ public sealed class SelfMetrics : IDisposable
     private Func<int> filteredProcesses = () => 0;
     private Func<int> activeSessions = () => 0;
 
+    // running totals kept alongside the write-only Counter/Histogram instruments, which
+    // expose no accumulated value; the summary command reads state, not a metrics stream,
+    // so it needs these back out. See project-todo-summary-command.
+    private long sessionsFailedTotal;
+    private long exportAttemptsTotal;
+    private long exportFailuresTotal;
+    private double lastDiscoveryMs;
+
+    /// <summary>
+    /// When the service's metrics were initialized, used to report uptime.
+    /// </summary>
+    public DateTime StartedUtc { get; } = DateTime.UtcNow;
+
+    public long SessionsFailedTotal => Interlocked.Read(ref sessionsFailedTotal);
+
+    public long ExportAttemptsTotal => Interlocked.Read(ref exportAttemptsTotal);
+
+    public long ExportFailuresTotal => Interlocked.Read(ref exportFailuresTotal);
+
+    /// <summary>
+    /// Wall time of the most recent discovery and reconcile pass, in milliseconds.
+    /// </summary>
+    public double LastDiscoveryMs => Volatile.Read(ref lastDiscoveryMs);
+
     public SelfMetrics()
     {
         meter.CreateObservableGauge("uptime.processes.monitored", () => monitoredProcesses(),
@@ -81,11 +105,19 @@ public sealed class SelfMetrics : IDisposable
 
     public void SessionEnded() => sessionsEnded.Add(1);
 
-    public void SessionFailed() => sessionsFailed.Add(1);
+    public void SessionFailed()
+    {
+        sessionsFailed.Add(1);
+        Interlocked.Increment(ref sessionsFailedTotal);
+    }
 
     public void MeasurementReceived() => measurementsReceived.Add(1);
 
-    public void RecordDiscovery(double milliseconds) => discoveryDuration.Record(milliseconds);
+    public void RecordDiscovery(double milliseconds)
+    {
+        discoveryDuration.Record(milliseconds);
+        Volatile.Write(ref lastDiscoveryMs, milliseconds);
+    }
 
     /// <summary>
     /// Records one export attempt. The target tag names the [otlp] section, the single
@@ -98,7 +130,12 @@ public sealed class SelfMetrics : IDisposable
 
         exportDuration.Record(milliseconds, tag);
         exportAttempts.Add(1, tag);
-        if (!succeeded) exportFailures.Add(1, tag);
+        Interlocked.Increment(ref exportAttemptsTotal);
+        if (!succeeded)
+        {
+            exportFailures.Add(1, tag);
+            Interlocked.Increment(ref exportFailuresTotal);
+        }
     }
 
     /// <summary>

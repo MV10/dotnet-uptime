@@ -115,5 +115,20 @@ public class ProcessManager
         get { lock (syncLock) { return new Dictionary<int, DiagnosticProcess>(knownProcesses); } }
     }
 
+    /// <summary>
+    /// A snapshot of the monitored processes and their session state for the summary
+    /// command. Ordered by PID so successive summaries read consistently.
+    /// </summary>
+    public IReadOnlyList<MonitoredProcessInfo> SnapshotMonitored()
+    {
+        lock (syncLock)
+        {
+            return processes.Values
+                .Select(p => new MonitoredProcessInfo(p.Process, p.Session.IsRunning))
+                .OrderBy(p => p.Process.PID)
+                .ToList();
+        }
+    }
+
     private record ManagedProcess(DiagnosticProcess Process, MetricsSession Session);
 }

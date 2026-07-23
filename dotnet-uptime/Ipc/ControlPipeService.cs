@@ -15,12 +15,17 @@ public class ControlPipeService : BackgroundService
     private readonly ConfigParser config;
     private readonly ILoggerFactory loggerFactory;
     private readonly ILogger<ControlPipeService> logger;
+    private readonly ProcessManager processManager;
+    private readonly SelfMetrics selfMetrics;
 
-    public ControlPipeService(ConfigParser config, ILoggerFactory loggerFactory, ILogger<ControlPipeService> logger)
+    public ControlPipeService(ConfigParser config, ILoggerFactory loggerFactory,
+        ILogger<ControlPipeService> logger, ProcessManager processManager, SelfMetrics selfMetrics)
     {
         this.config = config;
         this.loggerFactory = loggerFactory;
         this.logger = logger;
+        this.processManager = processManager;
+        this.selfMetrics = selfMetrics;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -51,7 +56,14 @@ public class ControlPipeService : BackgroundService
     // Runs on the pipe listener thread. Commands are added by the features that need
     // them; the transport itself understands none.
     private string HandleSwitches(string[] args)
-        => args.Length == 0
-            ? "No command was provided."
-            : $"Unrecognized command: {args[0]}";
+    {
+        if (args.Length == 0) return "No command was provided.";
+
+        return args[0].ToLowerInvariant() switch
+        {
+            // command lines are redacted inside Build, before the text reaches the pipe
+            "summary" => SummaryReport.Build(processManager, selfMetrics),
+            _ => $"Unrecognized command: {args[0]}"
+        };
+    }
 }

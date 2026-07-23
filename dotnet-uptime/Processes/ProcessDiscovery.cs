@@ -90,7 +90,7 @@ public class ProcessDiscovery
             }
 
             var proc = new DiagnosticProcess(
-                pid, pathname, filename, specifier, commandLine, now,
+                pid, pathname, filename, specifier, commandLine, GetCommandLineArgs(pid), now,
                 runtimeInfo.RuntimeInstanceCookie,
                 runtimeInfo.ProcessArchitecture,
                 runtimeInfo.ManagedEntrypointAssemblyName,
@@ -372,6 +372,29 @@ public class ProcessDiscovery
         catch
         {
             return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Gets the real argument vector where the platform preserves it: Linux, from the
+    /// NUL-separated /proc/{pid}/cmdline. Returns null on Windows (the PEB has only a
+    /// flattened string) so redaction falls back to heuristic tokenization there.
+    /// </summary>
+    private static IReadOnlyList<string> GetCommandLineArgs(int pid)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return null;
+
+        try
+        {
+            var raw = File.ReadAllText($"/proc/{pid}/cmdline");
+            if (string.IsNullOrEmpty(raw)) return null;
+            // a trailing NUL leaves an empty final element; drop empties rather than
+            // emit a blank argument that would render as a stray space
+            return raw.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        }
+        catch
+        {
+            return null;
         }
     }
 

@@ -21,8 +21,10 @@
 * Prevent starting in service mode if it is already running
 * Prevent OTEL transmission on interactive PID monitoring if service is running
 * Windows - show permissions limitations reminder when running service as user
+* High-detail error-handling coverage review (e.g. task cancellation, etc.)
 * README warning about provider-wildcard overhead and filtering
 * README clarification that Uptime is not "transparent" to Collectors
+* README explanation of command-line sensitive-data redaction behaviors
 * Bugfix - provider process-filter
 * Bugfix - `[include]`/`[exclude]` specifier parsing
 * Refactor - config parsing to support validation (including startup)
