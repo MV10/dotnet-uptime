@@ -20,4 +20,10 @@ public class AppConfig
     /// to disabled, so an unconfigured service exposes no process command lines.
     /// </summary>
     public SummaryCommandMode SummaryCommand { get; set; } = SummaryCommandMode.Disabled;
+
+    /// <summary>
+    /// When true (the default), secret values in the exported `process.command_line` tag are
+    /// redacted. Turning it off exports raw command lines, which routinely carry credentials.
+    /// </summary>
+    public bool RedactPayload { get; set; } = true;
 }

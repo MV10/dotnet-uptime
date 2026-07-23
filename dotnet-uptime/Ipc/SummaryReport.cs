@@ -39,16 +39,10 @@ public static class SummaryReport
         report.AppendLine("Monitored processes:");
         report.AppendLine($"  {"PID",-8}{"STATE",-11}COMMAND");
         foreach (var p in monitored)
-            report.AppendLine($"  {p.Process.PID,-8}{(p.Connected ? "connected" : "faulted"),-11}{Redact(p.Process)}");
+            report.AppendLine($"  {p.Process.PID,-8}{(p.Connected ? "connected" : "faulted"),-11}{CommandLineRedactor.Redact(p.Process)}");
 
         return report.ToString().TrimEnd();
     }
-
-    // the real argv (Linux) redacts accurately; Windows exposes only a flattened string
-    private static string Redact(DiagnosticProcess process)
-        => process.CommandLineArgs is not null
-            ? CommandLineRedactor.Redact(process.CommandLineArgs)
-            : CommandLineRedactor.RedactFlattened(process.CommandLine);
 
     private static string FormatUptime(TimeSpan uptime)
         => uptime.TotalDays >= 1

@@ -32,6 +32,15 @@ public static partial class CommandLineRedactor
     private static partial Regex UrlCredential();
 
     /// <summary>
+    /// Redacts a discovered process's command line, using its real argv where the platform
+    /// preserved it (Linux) and falling back to the flattened string otherwise (Windows).
+    /// </summary>
+    public static string Redact(DiagnosticProcess process)
+        => process.CommandLineArgs is not null
+            ? Redact(process.CommandLineArgs)
+            : RedactFlattened(process.CommandLine);
+
+    /// <summary>
     /// Redacts real argv, redacting each argument in place. This is the accurate path:
     /// argument boundaries are preserved, so a secret containing spaces cannot leak by
     /// being re-split. Used on Linux, where /proc/{pid}/cmdline is NUL-separated argv.

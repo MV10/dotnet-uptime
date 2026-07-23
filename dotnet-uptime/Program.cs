@@ -177,7 +177,7 @@ class Program
             var discovered = new Dictionary<int, DiagnosticProcess>();
             new ProcessDiscovery().Discover(discovered);
             if (discovered.TryGetValue(pid, out var proc))
-                processTags = ProcessTagBuilder.Build(proc, config.ProcessTagNames);
+                processTags = ProcessTagBuilder.Build(proc, config.ProcessTagNames, config.App.RedactPayload);
         }
 
         // interactive single-PID monitoring: pass null so [diags] process filters are
@@ -457,6 +457,7 @@ class Program
         Console.WriteLine($"  maxtimeseries    {config.App.MaxTimeSeries}");
         Console.WriteLine($"  loglevel         {config.App.MinimumLogLevel}");
         Console.WriteLine($"  summarycommand   {config.App.SummaryCommand.ToString().ToLowerInvariant()}");
+        Console.WriteLine($"  redactpayload    {config.App.RedactPayload.ToString().ToLowerInvariant()}");
 
         // derived rather than configured, but the summarycommand setting moves it
         Console.WriteLine($"  control pipe     {ControlPipe.Name(config)}");

@@ -153,6 +153,7 @@ The `[app]` section contains settings that control overall application behavior.
 | `maxtimeseries` | 1000 | Max time series tracked per process |
 | `loglevel` | warning | Minimum log level: `trace`, `debug`, `information`, `warning`, `error`, `critical`, or `none` |
 | `summarycommand` | disabled | Controls the `summary` command: `disabled`, `elevated`, or `enabled` (see below) |
+| `redactpayload` | true | Redact secrets in the exported `process.command_line` tag (see [Redaction Behavior](#redaction-behavior)) |
 
 Note that the `diags` counter collection interval is _also_ the interval at which data is pushed to OTLP collectors. When running in interactive mode monitoring a specific PID (console output), the rate is always 1 second, but any configured OTLP collection will continue at the configured rate. Collectors are expected to downsample to whatever data they actually wish to process and store.
 
@@ -351,4 +352,4 @@ The `list` and `procs` commands do _not_ redact. They run their own discovery un
 
 Redaction is a mitigation, not a guarantee. A secret passed positionally, with no flag name and no recognizable shape (`myapp hunter2`), cannot be detected, and an unusual secret key name may not match. There is also a platform difference. On Linux, arguments are reported as a list of separate data elements, so arguments are fully redacted even when a secret contains spaces. On Windows, the OS exposes only a single flattened command-line string, which must be split back into arguments in code, so a secret containing an unquoted space may not be fully redacted.
 
-Command lines exported as telemetry through the optional `commandline` process tag are handled separately and are _not_ redacted; leave that tag disabled when exporting to a backend without its own sanitization rules, as its configuration warning states.
+Command lines exported as telemetry through the optional `commandline` process tag ([\[processtags\]](#processtags-config-section)) are governed separately by the `redactpayload` setting, which defaults to `true` and applies the same redaction described above before the `process.command_line` attribute is exported. Setting `redactpayload=false` exports raw command lines, appropriate only when the tag is disabled or the backend has its own sanitization rules.

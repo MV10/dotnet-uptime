@@ -41,7 +41,7 @@ public static class ProcessTagBuilder
     /// target (an unavailable entrypoint assembly, no specifier rule, a RID absent on
     /// runtimes older than .NET 9) are omitted rather than exported blank.
     /// </summary>
-    public static IReadOnlyList<KeyValuePair<string, string>> Build(DiagnosticProcess proc, IReadOnlyList<string> selected)
+    public static IReadOnlyList<KeyValuePair<string, string>> Build(DiagnosticProcess proc, IReadOnlyList<string> selected, bool redactCommandLine = true)
     {
         if (proc is null || selected is null || selected.Count == 0) return None;
 
@@ -54,7 +54,9 @@ public static class ProcessTagBuilder
                 "assembly" => proc.ManagedEntrypointAssemblyName,
                 "filename" => proc.Filename,
                 "pathname" => proc.Pathname,
-                "commandline" => proc.CommandLine,
+                // command lines routinely carry credentials; redactpayload (default on) keeps
+                // them out of exported telemetry, unlike the always-on redaction of `summary`
+                "commandline" => redactCommandLine ? CommandLineRedactor.Redact(proc) : proc.CommandLine,
                 "clrversion" => proc.ClrProductVersionString,
                 "arch" => proc.ProcessArchitecture,
                 "rid" => proc.PortableRuntimeIdentifier,
