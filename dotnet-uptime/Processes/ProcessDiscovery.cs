@@ -5,14 +5,22 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
-namespace MV10.DotnetUptime.Processes;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// A helper class for finding and managing processes with a .NET diagnostics port.
 /// </summary>
 public class ProcessDiscovery
 {
+    private readonly ILogger logger;
+
+    public ProcessDiscovery(ILogger logger = null)
+    {
+        this.logger = logger;
+    }
+
     private static readonly string IpcRootPath =
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? @"\\.\pipe\" : Path.GetTempPath();
 
@@ -23,6 +31,16 @@ public class ProcessDiscovery
 
     // the 64-hex-character container ID Docker/containerd embed in cgroup paths
     private static readonly Regex ContainerIdPattern = new(@"[0-9a-f]{64}", RegexOptions.Compiled);
+
+    // Processes excluded by the rules are never added to knownProcesses, so without this
+    // they would be re-evaluated on every scan - including the GetProcessInfo round-trip
+    // that rule matching now requires. The command line is stored rather than just the
+    // PID so a recycled PID running something different is re-evaluated instead of
+    // inheriting the previous occupant's verdict.
+    private readonly Dictionary<int, string> rejectedPids = new();
+
+    /// <summary>Eligible processes currently excluded by the configured rules.</summary>
+    public int RejectedCount => rejectedPids.Count;
 
     /// <summary>
     /// Finds processes exposing a .NET diagnostic port and updates the externally-managed list
@@ -44,6 +62,8 @@ public class ProcessDiscovery
         var removed = new List<DiagnosticProcess>();
         var now = DateTime.UtcNow;
 
+        PruneRejected(discoveredPids);
+
         foreach (int pid in discoveredPids)
         {
             if (knownProcesses.ContainsKey(pid)) continue;
@@ -51,36 +71,40 @@ public class ProcessDiscovery
             var commandLine = GetCommandLine(pid);
             if (string.IsNullOrEmpty(commandLine)) continue;
 
+            // already rejected, and still the same process
+            if (rejectedPids.TryGetValue(pid, out var rejectedCommandLine)
+                && string.Equals(rejectedCommandLine, commandLine, StringComparison.Ordinal))
+                continue;
+
             var pathname = ExtractPathname(commandLine);
             var filename = Path.GetFileName(pathname);
 
-            var specifier = string.Empty;
-            if (rules is not null)
-            {
-                if (rules.TryGetValue(filename, out ProcessRule rule))
-                {
-                    specifier = rule.FindSpecifier(commandLine);
-                    var matches = rule.SpecifierRegex is null || !string.IsNullOrEmpty(specifier);
-                    // skip in Exclude mode if everything does match
-                    // skip in Include mode if anything doesn't match
-                    if (matches && ruleType == ProcessRuleType.Exclude) continue;
-                    if (!matches && ruleType == ProcessRuleType.Include) continue;
-                }
-                else
-                {
-                    // for Exclude mode, no rule implies inclusion
-                    // for Include mode, every process has to be identified by a rule
-                    if (ruleType == ProcessRuleType.Include) continue;
-                }
-            }
-
+            // rules can match on the entrypoint assembly name, which only the runtime
+            // can supply, so this query now precedes rule evaluation
             var runtimeInfo = DiagnosticIpc.GetProcessInfo(pid);
 
             // no valid CLR runtime on the other end of the diagnostic port
-            if (runtimeInfo.RuntimeInstanceCookie == Guid.Empty) continue;
+            if (runtimeInfo.RuntimeInstanceCookie == Guid.Empty)
+            {
+                rejectedPids[pid] = commandLine;
+                // Debug, and only on first evaluation (the rejected cache skips repeats),
+                // so an operator can answer "why isn't my process monitored?" on demand
+                logger?.LogDebug("PID {Pid} ({File}) skipped: no .NET runtime on its diagnostic port.",
+                    pid, filename);
+                continue;
+            }
+
+            if (!IsMonitored(rules, ruleType, filename, runtimeInfo.ManagedEntrypointAssemblyName,
+                commandLine, out var specifier))
+            {
+                rejectedPids[pid] = commandLine;
+                logger?.LogDebug("PID {Pid} ({File}) excluded by the configured {RuleType} rules.",
+                    pid, filename, ruleType);
+                continue;
+            }
 
             var proc = new DiagnosticProcess(
-                pid, pathname, filename, specifier, commandLine, now,
+                pid, pathname, filename, specifier, commandLine, GetCommandLineArgs(pid), now,
                 runtimeInfo.RuntimeInstanceCookie,
                 runtimeInfo.ProcessArchitecture,
                 runtimeInfo.ManagedEntrypointAssemblyName,
@@ -191,6 +215,57 @@ public class ProcessDiscovery
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Drops cached rejections for processes that no longer exist, so the cache cannot
+    /// grow without bound and a PID is re-evaluated from scratch once it is reused.
+    /// </summary>
+    private void PruneRejected(HashSet<int> discoveredPids)
+    {
+        if (rejectedPids.Count == 0) return;
+
+        foreach (var pid in rejectedPids.Keys.Where(pid => !discoveredPids.Contains(pid)).ToList())
+            rejectedPids.Remove(pid);
+    }
+
+    /// <summary>
+    /// Applies the [include] or [exclude] rules to a process. A rule name matches either
+    /// the executable filename or the managed entrypoint assembly name, because neither
+    /// alone identifies every process shape: a native host such as w3wp.exe has no
+    /// entrypoint assembly, while every framework-dependent app launched as
+    /// "dotnet myapp.dll" has the filename "dotnet" and can only be told apart by
+    /// its assembly name.
+    /// </summary>
+    private static bool IsMonitored(IReadOnlyDictionary<string, ProcessRule> rules, ProcessRuleType ruleType,
+        string filename, string assemblyName, string commandLine, out string specifier)
+    {
+        specifier = string.Empty;
+
+        if (rules is null) return true;
+
+        // the assembly name is the more specific of the two keys, so it is tried first;
+        // filename is the necessary fallback because the assembly name is empty for
+        // native hosts and on older runtimes
+        ProcessRule rule = null;
+        if (!string.IsNullOrEmpty(assemblyName))
+            rules.TryGetValue(assemblyName, out rule);
+
+        rule ??= rules.TryGetValue(filename, out var byFilename) ? byFilename : null;
+
+        if (rule is null)
+        {
+            // for Exclude mode, no rule implies inclusion
+            // for Include mode, every process has to be identified by a rule
+            return ruleType == ProcessRuleType.Exclude;
+        }
+
+        specifier = rule.FindSpecifier(commandLine);
+        var matches = rule.SpecifierRegex is null || !string.IsNullOrEmpty(specifier);
+
+        // skip in Exclude mode if everything does match
+        // skip in Include mode if anything doesn't match
+        return ruleType == ProcessRuleType.Include ? matches : !matches;
     }
 
     /// <summary>
@@ -311,6 +386,29 @@ public class ProcessDiscovery
         catch
         {
             return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Gets the real argument vector where the platform preserves it: Linux, from the
+    /// NUL-separated /proc/{pid}/cmdline. Returns null on Windows (the PEB has only a
+    /// flattened string) so redaction falls back to heuristic tokenization there.
+    /// </summary>
+    private static IReadOnlyList<string> GetCommandLineArgs(int pid)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return null;
+
+        try
+        {
+            var raw = File.ReadAllText($"/proc/{pid}/cmdline");
+            if (string.IsNullOrEmpty(raw)) return null;
+            // a trailing NUL leaves an empty final element; drop empties rather than
+            // emit a blank argument that would render as a stray space
+            return raw.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        }
+        catch
+        {
+            return null;
         }
     }
 

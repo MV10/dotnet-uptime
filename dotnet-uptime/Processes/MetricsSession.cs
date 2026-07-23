@@ -6,8 +6,9 @@ using System.Runtime.InteropServices;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
+using Microsoft.Extensions.Logging;
 
-namespace MV10.DotnetUptime.Processes;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// Manages a long-lived EventPipe connection to a single process, streaming counter events.
@@ -18,10 +19,28 @@ public class MetricsSession : IDisposable
 {
     private const string MetricsProviderName = "System.Diagnostics.Metrics";
 
+    // .NET 8+ shared-session identifier; diagnostic events echo it so a tool can tell
+    // its own session's events from those of another tool attached to the same process
+    private const string SharedSessionId = "SHARED";
+
+    // reconnect policy for a session that drops while its process is still alive. A
+    // sliding window means occasional blips recover forever, while a genuinely flapping
+    // session gives up rather than thrashing. Hardcoded by design; not worth a setting.
+    private const int MaxFaultsInWindow = 3;
+    private static readonly TimeSpan FaultWindow = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan ReconnectBackoff = TimeSpan.FromSeconds(5);
+
     private readonly int pid;
     private readonly int? containerPid;
     private readonly string containerId;
+    private readonly IReadOnlyList<KeyValuePair<string, string>> processTags;
     private readonly IMetricsCallback callback;
+    private readonly ILogger logger;
+    private readonly SelfMetrics selfMetrics;
+
+    // limit and multi-session conditions persist for the life of the session, so each
+    // is reported once rather than on every refresh interval
+    private readonly HashSet<string> reportedConditions = new(StringComparer.Ordinal);
     private readonly List<DiagProviderSpec> providers;
     private readonly int intervalSeconds;
     private readonly int maxHistograms;
@@ -31,25 +50,44 @@ public class MetricsSession : IDisposable
     private EventPipeSession session;
     private bool disposed;
 
+    // reconnect state, touched only by the single Run loop
+    private readonly string processAssemblyName;
+    private readonly Queue<DateTime> recentFaults = new();
+    private volatile bool reconnecting;
+
     // deduplication: providers that have sent Meter events supersede EventCounters
     private readonly ConcurrentDictionary<string, bool> meterProviders = new(StringComparer.OrdinalIgnoreCase);
 
     public int PID => pid;
     public bool IsRunning => processingTask is not null && !processingTask.IsCompleted;
 
-    public MetricsSession(int pid, IMetricsCallback callback, ConfigParser config)
+    // true while a dropped session is being re-established; distinguishes a transient
+    // reconnect from a healthy connection in the summary command
+    public bool IsReconnecting => reconnecting && IsRunning;
+
+    // processFilename gates per-provider process filters from [diags]; pass null (interactive
+    // single-PID monitoring) to ignore those filters and apply every configured provider
+    public MetricsSession(int pid, string processFilename, IMetricsCallback callback, ConfigParser config,
+        IReadOnlyList<KeyValuePair<string, string>> processTags = null, ILogger logger = null,
+        string processAssemblyName = null, SelfMetrics selfMetrics = null)
     {
         this.pid = pid;
+        this.logger = logger;
+        this.selfMetrics = selfMetrics;
+        this.processTags = processTags ?? Array.Empty<KeyValuePair<string, string>>();
         // a differing namespace PID means the process runs in a container
         if (ProcessDiscovery.TryGetNamespacePid(pid, out int nsPid))
             containerPid = nsPid;
         containerId = ProcessDiscovery.GetContainerId(pid);
         this.callback = callback;
-        providers = config.DiagProviders;
-        intervalSeconds = config.App.DiagnosticsIntervalMs / 1000;
+        this.processAssemblyName = processAssemblyName;
+        providers = processFilename is null
+            ? config.DiagProviders
+            : config.DiagProviders.Where(spec => spec.MatchesProcess(processFilename, processAssemblyName)).ToList();
+        intervalSeconds = config.SettingsApp.DiagnosticsIntervalMs / 1000;
         if (intervalSeconds < 1) intervalSeconds = 1;
-        maxHistograms = config.App.MaxHistograms;
-        maxTimeSeries = config.App.MaxTimeSeries;
+        maxHistograms = config.SettingsApp.MaxHistograms;
+        maxTimeSeries = config.SettingsApp.MaxTimeSeries;
     }
 
     public void Start()
@@ -77,29 +115,109 @@ public class MetricsSession : IDisposable
     {
         try
         {
+            while (!cts.IsCancellationRequested)
+            {
+                var faulted = RunSession();
+
+                if (cts.IsCancellationRequested) break;
+
+                // a clean stream end, or the process is simply gone: not a fault to retry.
+                // ProcessManager removes a departed process on its next discovery pass.
+                if (!faulted || !ProcessIsAlive()) break;
+
+                selfMetrics?.SessionFailed();
+
+                if (!RegisterFaultAndShouldRetry())
+                {
+                    reconnecting = false;
+                    logger?.LogError(
+                        "Giving up on PID {Pid} ({Assembly}) after {Count} session failures within {Minutes} minutes; "
+                        + "it is no longer monitored until the process restarts.",
+                        pid, processAssemblyName, MaxFaultsInWindow, FaultWindow.TotalMinutes);
+                    break;
+                }
+
+                reconnecting = true;
+                selfMetrics?.SessionReconnected();
+                logger?.LogWarning("PID {Pid} ({Assembly}) session dropped; reconnecting in {Seconds}s.",
+                    pid, processAssemblyName, ReconnectBackoff.TotalSeconds);
+
+                // WaitOne returns true only if the token was signaled during the backoff
+                if (cts.Token.WaitHandle.WaitOne(ReconnectBackoff)) break;
+            }
+        }
+        finally
+        {
+            // fires once, when the session truly ends (shutdown, give-up, or process gone),
+            // not on each transient reconnect
+            callback.OnSessionEnded(pid);
+        }
+    }
+
+    /// <summary>
+    /// Runs one EventPipe connection to completion. Returns true if it ended on a fault
+    /// (IPC error while the connection was live), false for a clean stream end or a
+    /// cancellation. Blocks in source.Process() until the stream closes.
+    /// </summary>
+    private bool RunSession()
+    {
+        EventPipeSession current = null;
+        try
+        {
             var client = CreateClient();
 
             var pipeProviders = BuildEventPipeProviders(client);
-            session = client.StartEventPipeSession(pipeProviders, requestRundown: false);
+            current = client.StartEventPipeSession(pipeProviders, requestRundown: false);
+            session = current;
+            reconnecting = false;
 
-            using var source = new EventPipeEventSource(session.EventStream);
+            using var source = new EventPipeEventSource(current.EventStream);
 
             source.Dynamic.All += OnTraceEvent;
 
             source.Process();
+            return false;
         }
         catch (Exception) when (cts.IsCancellationRequested)
         {
-            // expected shutdown
+            return false;
         }
         catch (Exception)
         {
-            // process exited or IPC failure
+            return true;
         }
         finally
         {
-            callback.OnSessionEnded(pid);
+            try { current?.Dispose(); } catch { }
+            if (ReferenceEquals(session, current)) session = null;
         }
+    }
+
+    // distinguishes a session that dropped (process alive, worth reconnecting) from one
+    // whose process has exited (nothing to reconnect to)
+    private bool ProcessIsAlive()
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // true if the session should be reconnected. Ages fault timestamps out of the window,
+    // so isolated failures recover indefinitely while a burst trips the breaker.
+    private bool RegisterFaultAndShouldRetry()
+    {
+        var now = DateTime.UtcNow;
+        recentFaults.Enqueue(now);
+        while (recentFaults.Count > 0 && now - recentFaults.Peek() > FaultWindow)
+            recentFaults.Dequeue();
+
+        return recentFaults.Count < MaxFaultsInWindow;
     }
 
     /// <summary>
@@ -129,10 +247,20 @@ public class MetricsSession : IDisposable
     {
         var pipeProviders = new List<EventPipeProvider>();
         var meterNames = new List<string>();
+        var hasWildcard = false;
 
         foreach (var spec in providers)
         {
-            // every provider gets an EventCounters subscription (legacy path)
+            // wildcards apply only to modern meters, subscribed via the "*" Metrics argument
+            // below; legacy EventCounter providers must be named exactly, so there is no
+            // per-provider subscription to add for a wildcard spec
+            if (spec.IsWildcard)
+            {
+                hasWildcard = true;
+                continue;
+            }
+
+            // every literal provider gets an EventCounters subscription (legacy path)
             pipeProviders.Add(new EventPipeProvider(
                 spec.ProviderName,
                 EventLevel.Informational,
@@ -145,9 +273,12 @@ public class MetricsSession : IDisposable
             meterNames.Add(spec.ProviderName);
         }
 
+        // a wildcard enables all meters in the target; unmatched meters are dropped later
+        // by IsCounterIncluded (there is no prefix syntax in the runtime's Metrics argument)
+        var metricsArgument = hasWildcard ? "*" : string.Join(',', meterNames);
+
         // add the System.Diagnostics.Metrics provider for modern meters
         // shared sessions available on .NET 8+; always request it
-        var sessionId = "SHARED";
         var clientId = Guid.NewGuid().ToString();
 
         const long timeSeriesValuesKeyword = 0x2;
@@ -157,8 +288,8 @@ public class MetricsSession : IDisposable
             timeSeriesValuesKeyword,
             new Dictionary<string, string>
             {
-                ["SessionId"] = sessionId,
-                ["Metrics"] = string.Join(',', meterNames),
+                ["SessionId"] = SharedSessionId,
+                ["Metrics"] = metricsArgument,
                 ["RefreshInterval"] = intervalSeconds.ToString(CultureInfo.InvariantCulture),
                 ["MaxTimeSeries"] = maxTimeSeries.ToString(CultureInfo.InvariantCulture),
                 ["MaxHistograms"] = maxHistograms.ToString(CultureInfo.InvariantCulture),
@@ -183,7 +314,84 @@ public class MetricsSession : IDisposable
                 HandleMeterEvent(traceEvent);
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // a malformed or unexpected event must not kill the session, but silently
+            // discarding it hides real problems, so report the first of each kind
+            ReportOnce($"exception:{traceEvent.EventName}", LogLevel.Warning,
+                "PID {Pid}: error handling '{EventName}' from provider '{ProviderName}': {Message}. "
+                + "Further errors for this event are not reported.",
+                pid, traceEvent.EventName, traceEvent.ProviderName, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Logs a condition the first time it occurs in this session. Limit and error
+    /// events repeat on every refresh interval, which would otherwise flood the log
+    /// for the entire lifetime of a monitored process.
+    /// </summary>
+    private void ReportOnce(string key, LogLevel level, string message, params object[] args)
+    {
+        lock (reportedConditions)
+        {
+            if (!reportedConditions.Add(key)) return;
+        }
+
+        logger?.Log(level, message, args);
+    }
+
+    /// <summary>
+    /// Handles the diagnostic events MetricsEventSource emits alongside measurements.
+    /// Without these, hitting maxtimeseries or failing to attach alongside another
+    /// tool is indistinguishable from a process that simply has no metrics.
+    /// </summary>
+    private void HandleDiagnosticEvent(TraceEvent traceEvent)
+    {
+        // these events carry the SessionId at index 0; ignore any that belong to a
+        // different tool's concurrent session on the same process
+        var eventSessionId = traceEvent.PayloadValue(0) as string;
+        if (!string.Equals(eventSessionId, SharedSessionId, StringComparison.Ordinal)) return;
+
+        switch (traceEvent.EventName)
+        {
+            case "TimeSeriesLimitReached":
+                ReportOnce("TimeSeriesLimitReached", LogLevel.Warning,
+                    "PID {Pid}: time series limit ({Limit}) reached; further series from this process are "
+                    + "not collected. Raise maxtimeseries or narrow [diags] to reduce cardinality.",
+                    pid, maxTimeSeries);
+                break;
+
+            case "HistogramLimitReached":
+                ReportOnce("HistogramLimitReached", LogLevel.Warning,
+                    "PID {Pid}: histogram limit ({Limit}) reached; further histograms from this process are "
+                    + "not collected. Raise maxhistograms or narrow [diags].",
+                    pid, maxHistograms);
+                break;
+
+            case "MultipleSessionsNotSupportedError":
+                ReportOnce("MultipleSessionsNotSupportedError", LogLevel.Error,
+                    "PID {Pid}: the runtime refused the metrics session because another tool already holds a "
+                    + "non-shared session on this process. No metrics will be collected from it.", pid);
+                break;
+
+            case "MultipleSessionsConfiguredIncorrectlyError":
+                ReportOnce("MultipleSessionsConfiguredIncorrectlyError", LogLevel.Error,
+                    "PID {Pid}: the metrics session conflicts with another tool's session on this process "
+                    + "(mismatched interval or limits). Metrics may be incomplete.", pid);
+                break;
+
+            case "ObservableInstrumentCallbackError":
+                ReportOnce("ObservableInstrumentCallbackError", LogLevel.Warning,
+                    "PID {Pid}: an observable instrument callback threw inside the monitored application; "
+                    + "those values are missing. This is a fault in the application, not in Uptime.", pid);
+                break;
+
+            case "Error":
+                ReportOnce("Error", LogLevel.Error,
+                    "PID {Pid}: the runtime reported a metrics error: {Message}",
+                    pid, traceEvent.PayloadValue(1) as string ?? "(no detail)");
+                break;
+        }
     }
 
     /// <summary>
@@ -227,7 +435,8 @@ public class MetricsSession : IDisposable
             Timestamp = traceEvent.TimeStamp,
             Kind = kind,
             ContainerPID = containerPid,
-            ContainerID = containerId
+            ContainerID = containerId,
+            ProcessTags = processTags
         });
     }
 
@@ -254,6 +463,17 @@ public class MetricsSession : IDisposable
                 // payload index 6 is Quantiles (string), 5 is tags
                 HandleHistogramValue(traceEvent);
                 break;
+
+            // diagnostics rather than measurements; ignoring these makes dropped data
+            // and failed attachment silent
+            case "TimeSeriesLimitReached":
+            case "HistogramLimitReached":
+            case "MultipleSessionsNotSupportedError":
+            case "MultipleSessionsConfiguredIncorrectlyError":
+            case "ObservableInstrumentCallbackError":
+            case "Error":
+                HandleDiagnosticEvent(traceEvent);
+                break;
         }
     }
 
@@ -266,7 +486,8 @@ public class MetricsSession : IDisposable
 
         meterProviders[meterName] = true;
 
-        var tags = (string)traceEvent.PayloadValue(tagsIndex);
+        // see CounterTagParser for why this needs recovering rather than splitting
+        var tags = CounterTagParser.Parse((string)traceEvent.PayloadValue(tagsIndex));
         var valueText = (string)traceEvent.PayloadValue(valueIndex);
 
         if (!double.TryParse(valueText, NumberStyles.Number | NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
@@ -283,7 +504,8 @@ public class MetricsSession : IDisposable
             Tags = tags,
             Kind = kind,
             ContainerPID = containerPid,
-            ContainerID = containerId
+            ContainerID = containerId,
+            ProcessTags = processTags
         });
     }
 
@@ -296,7 +518,8 @@ public class MetricsSession : IDisposable
 
         meterProviders[meterName] = true;
 
-        var tags = (string)traceEvent.PayloadValue(5);
+        // see CounterTagParser for why this needs recovering rather than splitting
+        var tags = CounterTagParser.Parse((string)traceEvent.PayloadValue(5));
         var quantilesText = (string)traceEvent.PayloadValue(6);
 
         // quantiles format: "50=1.23;95=4.56;99=7.89"
@@ -311,7 +534,11 @@ public class MetricsSession : IDisposable
             if (!double.TryParse(valText, NumberStyles.Number | NumberStyles.Float, CultureInfo.InvariantCulture, out double val))
                 continue;
 
-            var pctTag = string.IsNullOrEmpty(tags) ? $"Percentile={pctText}" : $"{tags},Percentile={pctText}";
+            // each quantile becomes its own series, distinguished by a Percentile tag
+            var quantileTags = new List<KeyValuePair<string, string>>(tags)
+            {
+                new("Percentile", pctText)
+            };
 
             callback.OnCounterPayload(pid, new CounterPayload
             {
@@ -321,10 +548,11 @@ public class MetricsSession : IDisposable
                 DisplayUnits = string.Empty,
                 Value = val,
                 Timestamp = traceEvent.TimeStamp,
-                Tags = pctTag,
+                Tags = quantileTags,
                 Kind = CounterKind.Gauge,
                 ContainerPID = containerPid,
-                ContainerID = containerId
+                ContainerID = containerId,
+                ProcessTags = processTags
             });
         }
     }
@@ -333,7 +561,7 @@ public class MetricsSession : IDisposable
     {
         foreach (var spec in providers)
         {
-            if (!string.Equals(spec.ProviderName, providerName, StringComparison.OrdinalIgnoreCase))
+            if (!spec.MatchesProvider(providerName))
                 continue;
 
             // process filter is checked at session creation, not here
@@ -346,7 +574,10 @@ public class MetricsSession : IDisposable
                     return true;
             }
 
-            return false;
+            // a literal provider match with a non-matching counter list is authoritative;
+            // a wildcard match is not, so keep scanning in case a later spec includes it
+            if (!spec.IsWildcard)
+                return false;
         }
 
         return false;

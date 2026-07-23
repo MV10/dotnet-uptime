@@ -1,5 +1,5 @@
 
-namespace MV10.DotnetUptime.Processes;
+namespace MV10.DotnetUptime;
 
 /// <summary>
 /// Details of a process which exposes a .NET diagnostics port.
@@ -10,6 +10,7 @@ public class DiagnosticProcess(
     string filename,
     string specifier,
     string commandLine,
+    IReadOnlyList<string> commandLineArgs,
     DateTime added,
     Guid runtimeInstanceCookie,
     string processArchitecture,
@@ -45,6 +46,14 @@ public class DiagnosticProcess(
     /// Command used to launch the process including arguments.
     /// </summary>
     public string CommandLine { get; } = commandLine;
+
+    /// <summary>
+    /// The real argument vector when the platform exposes it (Linux, from the
+    /// NUL-separated /proc/{pid}/cmdline); null on Windows, whose PEB gives only a
+    /// single flattened string. Preserves argument boundaries for redaction, which a
+    /// space-joined command line destroys.
+    /// </summary>
+    public IReadOnlyList<string> CommandLineArgs { get; } = commandLineArgs;
 
     /// <summary>
     /// Timestamp when the Scan operation first identified this process.

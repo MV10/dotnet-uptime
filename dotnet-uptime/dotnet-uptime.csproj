@@ -10,10 +10,19 @@
         <InvariantGlobalization>true</InvariantGlobalization>
         <IsPackable>false</IsPackable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <Version>1.0.0</Version>
+        <Version>1.0.1</Version>
     </PropertyGroup>
 
     <ItemGroup>
+      <!-- copied alongside the exe on both build and publish so local runs and the
+           release archives all ship a sample config -->
+      <None Include="uptime.conf">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="CommandLineSwitchPipe" Version="2.2.0" />
       <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.661903" />
       <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.4" />
       <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
