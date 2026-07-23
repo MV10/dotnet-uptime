@@ -27,6 +27,7 @@
 * README warning about provider-wildcard overhead and filtering
 * README clarification that Uptime is not "transparent" to Collectors
 * README explanation of command-line sensitive-data redaction behaviors
+* README clarification about where log events are captured (OS dependent)
 * Bugfix - provider process-filter
 * Bugfix - `[include]`/`[exclude]` specifier parsing
 * Refactor - config parsing to support validation (including startup)

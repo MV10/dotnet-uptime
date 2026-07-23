@@ -61,6 +61,8 @@ sc stop dotnet-uptime
 sc delete dotnet-uptime
 ```
 
+Running as a Windows Service, Uptime writes its log output to the Windows Event Log automatically; view it in Event Viewer. The `loglevel` setting controls how much is emitted.
+
 ### Linux systemd Service
 
 > Replace `<install-dir>` with the directory where you deployed the application and configuration files.
@@ -88,7 +90,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now dotnet-uptime
 ```
 
-Check status and logs with `systemctl status dotnet-uptime` and `journalctl -u dotnet-uptime`.
+Under systemd, Uptime's log output is captured automatically: it writes to standard output in the journald format, and the journal collects it. View it with `journalctl -u dotnet-uptime` (and check service state with `systemctl status dotnet-uptime`). The `loglevel` setting controls how much is emitted.
 
 To remove it, run `sudo systemctl disable --now dotnet-uptime` and delete the unit file.
 
@@ -111,10 +113,14 @@ Create `/etc/init.d/dotnet-uptime` and make it executable (`sudo chmod +x /etc/i
 
 DAEMON=<install-dir>/dotnet-uptime
 PIDFILE=/var/run/dotnet-uptime.pid
+# LOGFILE=/var/log/dotnet-uptime.log
 
 case "$1" in
   start)
     start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE" --exec "$DAEMON"
+    # To capture log output, uncomment the LOGFILE line above, comment out the start
+    # line above, and uncomment the line below (see the note after this script).
+    # start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE" --exec /bin/sh -- -c "exec \"$DAEMON\" >> \"$LOGFILE\" 2>&1"
     ;;
   stop)
     start-stop-daemon --stop --pidfile "$PIDFILE" --retry 10
@@ -131,6 +137,8 @@ esac
 ```
 
 Register it to start at boot with `sudo update-rc.d dotnet-uptime defaults`, then start it with `sudo service dotnet-uptime start`.
+
+Unlike systemd and the Windows Service, SysV Init has no log collection of its own, and the `start` line above **discards** Uptime's output. To keep the logs, use the commented alternative `start` line, which runs the daemon through a shell that appends both standard output and standard error to `$LOGFILE`. The wrapping shell is needed because `start-stop-daemon --background` does not apply redirection on its own. Manage that file's growth with `logrotate` as you would any other application log (not shown here).
 
 
 ## Configuration
