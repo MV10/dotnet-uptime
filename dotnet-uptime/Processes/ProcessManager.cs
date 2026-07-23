@@ -11,7 +11,7 @@ public class ProcessManager
 {
     private readonly Dictionary<int, ManagedProcess> processes = new();
     private readonly Dictionary<int, DiagnosticProcess> knownProcesses = new();
-    private readonly ProcessDiscovery discovery = new();
+    private readonly ProcessDiscovery discovery;
     private readonly ConfigParser config;
     private readonly IMetricsCallback metricsCallback;
     private readonly ILogger<ProcessManager> logger;
@@ -27,6 +27,7 @@ public class ProcessManager
         this.selfMetrics = selfMetrics;
         logger = loggerFactory?.CreateLogger<ProcessManager>();
         sessionLogger = loggerFactory?.CreateLogger<MetricsSession>();
+        discovery = new ProcessDiscovery(loggerFactory?.CreateLogger<ProcessDiscovery>());
 
         // the gauges report state this class owns, so it supplies the callbacks
         selfMetrics?.SetStateProviders(

@@ -34,6 +34,13 @@ public sealed class OtelDiagnosticsListener : EventListener, IHostedService
     private readonly Dictionary<string, DateTime> lastLoggedUtc = new(StringComparer.Ordinal);
 
     private ILogger<OtelDiagnosticsListener> logger;
+    private readonly IHostApplicationLifetime lifetime;
+
+    // once shutting down, the SDK reports its own cancellations as errors; those are
+    // normal and must not surface as Error, but a mid-run cancellation still should.
+    // Set from ApplicationStopping because the OTel provider (and its CanceledExport)
+    // shuts down before this listener's own StopAsync would run.
+    private volatile bool stopping;
 
     // OnEventSourceCreated fires during the base constructor, before any field
     // assignment here, so sources seen that early are recorded and enabled once
@@ -41,8 +48,9 @@ public sealed class OtelDiagnosticsListener : EventListener, IHostedService
     private readonly List<EventSource> pendingSources = new();
     private readonly object syncLock = new();
 
-    public OtelDiagnosticsListener(ILogger<OtelDiagnosticsListener> logger)
+    public OtelDiagnosticsListener(ILogger<OtelDiagnosticsListener> logger, IHostApplicationLifetime lifetime)
     {
+        this.lifetime = lifetime;
         lock (syncLock)
         {
             this.logger = logger;
@@ -51,9 +59,19 @@ public sealed class OtelDiagnosticsListener : EventListener, IHostedService
         }
     }
 
-    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        // fires at the very start of shutdown, before any hosted service (including the
+        // OTel provider) stops, so the flag is set before the cancellation events arrive
+        lifetime.ApplicationStopping.Register(() => stopping = true);
+        return Task.CompletedTask;
+    }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        stopping = true;
+        return Task.CompletedTask;
+    }
 
     protected override void OnEventSourceCreated(EventSource eventSource)
     {
@@ -83,6 +101,11 @@ public sealed class OtelDiagnosticsListener : EventListener, IHostedService
     {
         if (logger is null) return;
         if (eventData.EventName is not null && IgnoredEvents.Contains(eventData.EventName)) return;
+
+        // a cancellation reported during shutdown is expected teardown, not a fault;
+        // outside shutdown the same event is a real timeout and still logs
+        if (stopping && IsCancellation(eventData)) return;
+
         if (!ShouldLog(eventData.EventName)) return;
 
         var level = eventData.Level switch
@@ -98,6 +121,12 @@ public sealed class OtelDiagnosticsListener : EventListener, IHostedService
         logger.Log(level, "{Source}/{EventName}: {Message}",
             eventData.EventSource?.Name, eventData.EventName, FormatMessage(eventData));
     }
+
+    // the SDK names shutdown-time cancellations "CanceledExport" and similar, and echoes
+    // a TaskCanceledException in the message; match either without over-reaching
+    private static bool IsCancellation(EventWrittenEventArgs eventData)
+        => (eventData.EventName?.Contains("Cancel", StringComparison.OrdinalIgnoreCase) ?? false)
+            || (eventData.Message?.Contains("cancel", StringComparison.OrdinalIgnoreCase) ?? false);
 
     /// <summary>
     /// Rate-limits each distinct event so a persistently failing exporter reports

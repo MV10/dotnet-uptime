@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
 namespace MV10.DotnetUptime;
 
@@ -13,6 +14,13 @@ namespace MV10.DotnetUptime;
 /// </summary>
 public class ProcessDiscovery
 {
+    private readonly ILogger logger;
+
+    public ProcessDiscovery(ILogger logger = null)
+    {
+        this.logger = logger;
+    }
+
     private static readonly string IpcRootPath =
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? @"\\.\pipe\" : Path.GetTempPath();
 
@@ -79,6 +87,10 @@ public class ProcessDiscovery
             if (runtimeInfo.RuntimeInstanceCookie == Guid.Empty)
             {
                 rejectedPids[pid] = commandLine;
+                // Debug, and only on first evaluation (the rejected cache skips repeats),
+                // so an operator can answer "why isn't my process monitored?" on demand
+                logger?.LogDebug("PID {Pid} ({File}) skipped: no .NET runtime on its diagnostic port.",
+                    pid, filename);
                 continue;
             }
 
@@ -86,6 +98,8 @@ public class ProcessDiscovery
                 commandLine, out var specifier))
             {
                 rejectedPids[pid] = commandLine;
+                logger?.LogDebug("PID {Pid} ({File}) excluded by the configured {RuleType} rules.",
+                    pid, filename, ruleType);
                 continue;
             }
 

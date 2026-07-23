@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 
 namespace MV10.DotnetUptime;
 
@@ -84,8 +85,10 @@ class Program
             return;
         }
 
+        using var loggerFactory = BeginInteractive(verbose ? "list" : "procs");
+
         var procs = new Dictionary<int, DiagnosticProcess>();
-        var handler = new ProcessDiscovery();
+        var handler = new ProcessDiscovery(loggerFactory.CreateLogger<ProcessDiscovery>());
 
         if (config is not null && config.Rules.Count > 0)
             handler.Discover(procs, config.Rules, config.RuleType);
@@ -144,6 +147,8 @@ class Program
             return 1;
         }
 
+        using var loggerFactory = BeginInteractive($"monitor {pid}");
+
         // OTLP export stays at the configured interval; only the console collection
         // rate is sped up below, so capture the configured value first
         int otlpExportIntervalMs = config.App.DiagnosticsIntervalMs;
@@ -175,14 +180,15 @@ class Program
         if (config.ProcessTagNames.Count > 0)
         {
             var discovered = new Dictionary<int, DiagnosticProcess>();
-            new ProcessDiscovery().Discover(discovered);
+            new ProcessDiscovery(loggerFactory.CreateLogger<ProcessDiscovery>()).Discover(discovered);
             if (discovered.TryGetValue(pid, out var proc))
                 processTags = ProcessTagBuilder.Build(proc, config.ProcessTagNames, config.App.RedactPayload);
         }
 
         // interactive single-PID monitoring: pass null so [diags] process filters are
         // ignored and every configured provider applies to the chosen process
-        using var session = new MetricsSession(pid, null, callback, config, processTags);
+        using var session = new MetricsSession(pid, null, callback, config, processTags,
+            loggerFactory.CreateLogger<MetricsSession>());
 
         Console.CancelKeyPress += (_, e) =>
         {
@@ -326,8 +332,10 @@ class Program
     /// </summary>
     static int ShowStats()
     {
+        using var loggerFactory = BeginInteractive("stats");
+
         var procs = new Dictionary<int, DiagnosticProcess>();
-        new ProcessDiscovery().Discover(procs);
+        new ProcessDiscovery(loggerFactory.CreateLogger<ProcessDiscovery>()).Discover(procs);
 
         // exactly one service instance is the supported deployment, so the service is
         // the single Uptime instance that is not this process. Identify it by entrypoint
@@ -357,7 +365,8 @@ class Program
             new SessionEndedCallback(() => cts.Cancel()));
 
         // null filename so the [diags] process filters do not apply
-        using var session = new MetricsSession(service.PID, null, callback, config);
+        using var session = new MetricsSession(service.PID, null, callback, config, null,
+            loggerFactory.CreateLogger<MetricsSession>());
 
         Console.CancelKeyPress += (_, e) =>
         {
@@ -404,6 +413,8 @@ class Program
             Console.WriteLine($"Config error: {ex.Message}");
             return 1;
         }
+
+        using var loggerFactory = BeginInteractive("summary");
 
         // the caller-side elevation check for summarycommand=elevated. On Linux the root-only
         // pipe already enforces this; on Windows it is the only guard, and a guardrail rather
@@ -547,6 +558,47 @@ class Program
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// Builds a console logger for an interactive command and records an audit entry naming
+    /// the command and the invoking user. Log output goes to stderr so piped command results
+    /// on stdout stay clean. The audit entry is Information, so it appears only at
+    /// loglevel=information or lower; the level is read from uptime.conf when present.
+    /// </summary>
+    static ILoggerFactory BeginInteractive(string command)
+    {
+        var level = LogLevel.Warning;
+        try
+        {
+            level = ConfigParser.Load().App.MinimumLogLevel;
+        }
+        catch
+        {
+            // no config, or one that will be reported by the command itself: interactive
+            // logging just falls back to the default level rather than failing here
+        }
+
+        var factory = LoggerFactory.Create(builder =>
+        {
+            builder
+                .AddSimpleConsole(options =>
+                {
+                    options.SingleLine = true;
+                    options.TimestampFormat = "HH:mm:ss ";
+                })
+                .SetMinimumLevel(level);
+
+            // route all log output to stderr so piped command results on stdout stay clean
+            builder.Services.Configure<ConsoleLoggerOptions>(
+                options => options.LogToStandardErrorThreshold = LogLevel.Trace);
+        });
+
+        factory.CreateLogger("Interactive").LogInformation(
+            "Command '{Command}' invoked by user '{User}' (process {Pid}).",
+            command, Environment.UserName, Environment.ProcessId);
+
+        return factory;
     }
 
     static void PrintVersion()
