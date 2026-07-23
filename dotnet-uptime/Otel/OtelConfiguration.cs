@@ -22,7 +22,7 @@ static class OtelConfiguration
         int exportIntervalMs, SelfMetrics selfMetrics)
     {
         var hasOtlp = config.OtlpTargetNames.Count > 0;
-        var hasHttp = config.HttpEndpoint is not null;
+        var hasHttp = config.SettingsHttpEndpoint is not null;
         if (!hasOtlp && !hasHttp) return;
 
         services.AddOpenTelemetry()
@@ -115,9 +115,9 @@ static class OtelConfiguration
 
     private static void ConfigurePrometheus(MeterProviderBuilder metrics, ConfigParser config)
     {
-        if (config.HttpEndpoint is null) return;
+        if (config.SettingsHttpEndpoint is null) return;
 
-        var uri = new Uri(config.HttpEndpoint.Endpoint);
+        var uri = new Uri(config.SettingsHttpEndpoint.Endpoint);
         metrics.AddPrometheusHttpListener(options =>
         {
             options.Host = uri.Host;

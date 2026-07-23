@@ -40,7 +40,7 @@ public static class SummaryReport
         report.AppendLine("Monitored processes:");
         report.AppendLine($"  {"PID",-8}{"STATE",-13}COMMAND");
         foreach (var p in monitored)
-            report.AppendLine($"  {p.Process.PID,-8}{State(p),-13}{CommandLineRedactor.Redact(p.Process)}");
+            report.AppendLine($"  {p.Process.PID,-8}{State(p),-13}{CommandLineSanitizer.Sanitize(p.Process)}");
 
         return report.ToString().TrimEnd();
     }

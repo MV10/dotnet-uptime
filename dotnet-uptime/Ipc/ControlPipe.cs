@@ -25,8 +25,7 @@ public static class ControlPipe
     private const string SecurePipeName = "/run/dotnet-uptime/control";
 
     // 0700
-    private const UnixFileMode SecureDirectoryMode =
-        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+    private const UnixFileMode SecureDirectoryMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
     /// <summary>
     /// The pipe name both ends must use. Derived from configuration only, never from the
@@ -34,7 +33,7 @@ public static class ControlPipe
     /// disagree and the client would silently report that no service is running.
     /// </summary>
     public static string Name(ConfigParser config)
-        => config.App.SummaryCommand == SummaryCommandMode.Elevated && OperatingSystem.IsLinux()
+        => config.SettingsApp.SummaryCommand == SummaryCommandMode.Elevated && OperatingSystem.IsLinux()
             ? SecurePipeName
             : OpenPipeName;
 
@@ -97,7 +96,7 @@ public static class ControlPipe
 
         // Windows named pipes live in the kernel object namespace, so there is no directory
         // to protect and elevated remains a caller-side guardrail only
-        if (config.App.SummaryCommand != SummaryCommandMode.Elevated || !OperatingSystem.IsLinux()) return true;
+        if (config.SettingsApp.SummaryCommand != SummaryCommandMode.Elevated || !OperatingSystem.IsLinux()) return true;
 
         if (!Environment.IsPrivilegedProcess)
         {

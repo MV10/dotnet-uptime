@@ -6,12 +6,31 @@ namespace MV10.DotnetUptime;
 /// <summary>
 /// Service behavior settings from [app].
 /// </summary>
-public class AppConfig
+public class SettingsApp
 {
+    /// <summary>
+    /// How often process discovery occurs, in milliseconds.
+    /// </summary>
     public int ProcessScanIntervalMs { get; set; } = 15000;
+    
+    /// <summary>
+    /// How often diagnostic data is pushed to endpoints, in milliseconds.
+    /// </summary>
     public int DiagnosticsIntervalMs { get; set; } = 15000;
+    
+    /// <summary>
+    /// Limit of histogram metrics to track per process.
+    /// </summary>
     public int MaxHistograms { get; set; } = 10;
+    
+    /// <summary>
+    /// Limit of time series metrics to track per process.
+    /// </summary>
     public int MaxTimeSeries { get; set; } = 1000;
+    
+    /// <summary>
+    /// Gate the severity of emitted log events.
+    /// </summary>
     public LogLevel MinimumLogLevel { get; set; } = LogLevel.Warning;
 
     /// <summary>

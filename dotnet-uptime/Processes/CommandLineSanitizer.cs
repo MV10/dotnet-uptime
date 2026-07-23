@@ -10,7 +10,7 @@ namespace MV10.DotnetUptime;
 /// boundary, and cannot catch a positional secret that has no key name or recognizable
 /// shape. Operates per argument, so it needs real argv where that is available.
 /// </summary>
-public static partial class CommandLineRedactor
+public static partial class CommandLineSanitizer
 {
     private const string Placeholder = "***";
 
@@ -35,17 +35,17 @@ public static partial class CommandLineRedactor
     /// Redacts a discovered process's command line, using its real argv where the platform
     /// preserved it (Linux) and falling back to the flattened string otherwise (Windows).
     /// </summary>
-    public static string Redact(DiagnosticProcess process)
+    public static string Sanitize(DiagnosticProcess process)
         => process.CommandLineArgs is not null
-            ? Redact(process.CommandLineArgs)
-            : RedactFlattened(process.CommandLine);
+            ? Sanitize(process.CommandLineArgs)
+            : SanitizeFlattened(process.CommandLine);
 
     /// <summary>
     /// Redacts real argv, redacting each argument in place. This is the accurate path:
     /// argument boundaries are preserved, so a secret containing spaces cannot leak by
     /// being re-split. Used on Linux, where /proc/{pid}/cmdline is NUL-separated argv.
     /// </summary>
-    public static string Redact(IReadOnlyList<string> argv)
+    public static string Sanitize(IReadOnlyList<string> argv)
     {
         if (argv is null || argv.Count == 0) return string.Empty;
 
@@ -60,7 +60,7 @@ public static partial class CommandLineRedactor
                 continue;
             }
 
-            result[i] = RedactArgument(argv[i]);
+            result[i] = SanitizeArgument(argv[i]);
         }
 
         return string.Join(' ', result);
@@ -72,12 +72,12 @@ public static partial class CommandLineRedactor
     /// (the PEB exposes one string, never argv) and a best effort; a secret containing an
     /// unquoted space cannot be reliably isolated. State this limitation rather than imply parity.
     /// </summary>
-    public static string RedactFlattened(string commandLine)
+    public static string SanitizeFlattened(string commandLine)
         => string.IsNullOrWhiteSpace(commandLine)
             ? string.Empty
-            : Redact(Tokenize(commandLine));
+            : Sanitize(Tokenize(commandLine));
 
-    private static string RedactArgument(string arg)
+    private static string SanitizeArgument(string arg)
     {
         if (string.IsNullOrEmpty(arg)) return arg;
 
@@ -106,18 +106,18 @@ public static partial class CommandLineRedactor
 
             // a connection-string value keeps its non-secret pairs, whatever the key is
             if (LooksLikeConnectionString(value))
-                return $"{key}{separator}{RedactConnectionString(value)}";
+                return $"{key}{separator}{SanitizeConnectionString(value)}";
 
             if (SensitiveKey().IsMatch(LastKeySegment(key)))
                 return $"{key}{separator}{Placeholder}";
 
-            return $"{key}{separator}{RedactBareValue(value)}";
+            return $"{key}{separator}{SanitizeBareValue(value)}";
         }
 
-        return RedactBareValue(arg);
+        return SanitizeBareValue(arg);
     }
 
-    private static string RedactBareValue(string value)
+    private static string SanitizeBareValue(string value)
     {
         var url = UrlCredential().Match(value);
         return url.Success
@@ -139,7 +139,7 @@ public static partial class CommandLineRedactor
         => value.IndexOfAny(new[] { ';', ',' }) > 0 && value.Contains('=')
             && ConnectionStringPair().Matches(value).Count > 1;
 
-    private static string RedactConnectionString(string value)
+    private static string SanitizeConnectionString(string value)
         => ConnectionStringPair().Replace(value, match =>
         {
             var key = match.Groups["key"].Value;
@@ -153,7 +153,7 @@ public static partial class CommandLineRedactor
     private static bool IsBareSensitiveFlag(string arg)
     {
         if (arg.Length < 2 || arg[0] != '-') return false;
-        // a "key=value" flag is not a bare flag; its value is handled by RedactArgument
+        // a "key=value" flag is not a bare flag; its value is handled by SanitizeArgument
         if (arg.IndexOf('=') >= 0) return false;
 
         var name = arg.TrimStart('-');

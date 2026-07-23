@@ -64,7 +64,7 @@ public class ControlPipeService : BackgroundService
             // enforced here as well as client-side, so a hand-written client cannot reach
             // the report by talking to the pipe directly. Command lines are redacted inside
             // Build, before the text reaches the pipe.
-            "summary" when config.App.SummaryCommand == SummaryCommandMode.Disabled
+            "summary" when config.SettingsApp.SummaryCommand == SummaryCommandMode.Disabled
                 => "The summary command is disabled on this service.",
             "summary" => SummaryReport.Build(processManager, selfMetrics),
             _ => $"Unrecognized command: {args[0]}"

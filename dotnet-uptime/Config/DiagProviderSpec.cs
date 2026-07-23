@@ -7,8 +7,11 @@ namespace MV10.DotnetUptime;
 /// </summary>
 public class DiagProviderSpec
 {
+    
     public string ProviderName { get; }
+    
     public string[] Counters { get; }
+    
     public string ProcessFilter { get; }
 
     /// <summary>True when the provider name is "*" or ends with ".*".</summary>

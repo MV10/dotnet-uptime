@@ -15,8 +15,7 @@ public static class HostTagResolver
 {
     private static readonly Regex TokenPattern = new(@"%([^%]+)%", RegexOptions.Compiled);
 
-    private static readonly string[] BuiltInTokens =
-        { "machinename", "fqdn", "osversion", "osname", "uptimeversion" };
+    private static readonly string[] BuiltInTokens = { "machinename", "fqdn", "osversion", "osname", "uptimeversion" };
 
     /// <summary>Built-in token names, for error messages and docs.</summary>
     public static IEnumerable<string> KnownTokens => BuiltInTokens;
@@ -72,8 +71,7 @@ public static class HostTagResolver
     {
         if (OperatingSystem.IsWindows()) return "windows";
         if (OperatingSystem.IsLinux()) return "linux";
-        if (OperatingSystem.IsMacOS()) return "darwin";
-        return "other";
+        return "unsupported";
     }
 
     private static string GetFullyQualifiedName()

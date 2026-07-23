@@ -151,11 +151,11 @@ class Program
 
         // OTLP export stays at the configured interval; only the console collection
         // rate is sped up below, so capture the configured value first
-        int otlpExportIntervalMs = config.App.DiagnosticsIntervalMs;
+        int otlpExportIntervalMs = config.SettingsApp.DiagnosticsIntervalMs;
 
         // interactive monitoring always collects on a 1-second interval for responsive
         // console output, regardless of the configured (service-oriented) interval
-        config.App.DiagnosticsIntervalMs = 1000;
+        config.SettingsApp.DiagnosticsIntervalMs = 1000;
 
         Console.WriteLine($"Monitoring PID {pid} ({runtimeInfo.ManagedEntrypointAssemblyName}), press Ctrl+C to stop.");
         Console.WriteLine();
@@ -182,7 +182,7 @@ class Program
             var discovered = new Dictionary<int, DiagnosticProcess>();
             new ProcessDiscovery(loggerFactory.CreateLogger<ProcessDiscovery>()).Discover(discovered);
             if (discovered.TryGetValue(pid, out var proc))
-                processTags = ProcessTagBuilder.Build(proc, config.ProcessTagNames, config.App.RedactPayload);
+                processTags = ProcessTagBuilder.Build(proc, config.ProcessTagNames, config.SettingsApp.RedactPayload);
         }
 
         // interactive single-PID monitoring: pass null so [diags] process filters are
@@ -273,7 +273,7 @@ class Program
 
         // service mode collects metrics only to export them; without a destination
         // there is nothing to do, so refuse to start
-        if (config.OtlpTargetNames.Count == 0 && config.HttpEndpoint is null)
+        if (config.OtlpTargetNames.Count == 0 && config.SettingsHttpEndpoint is null)
         {
             Console.Error.WriteLine("Config error: no export endpoints defined.");
             Console.Error.WriteLine("Service mode requires at least one [otlp] target or an [http] section.");
@@ -303,7 +303,7 @@ class Program
         var host = Host.CreateDefaultBuilder(args)
             .UseWindowsService()
             .UseSystemd()
-            .ConfigureLogging(logging => logging.SetMinimumLevel(config.App.MinimumLogLevel))
+            .ConfigureLogging(logging => logging.SetMinimumLevel(config.SettingsApp.MinimumLogLevel))
             .ConfigureServices(services =>
             {
                 services.AddSingleton(config);
@@ -317,7 +317,7 @@ class Program
                 services.AddHostedService<OtelDiagnosticsListener>();
                 services.AddHostedService<ProcessScannerService>();
                 services.AddHostedService<ControlPipeService>();
-                OtelConfiguration.ConfigureOpenTelemetry(services, config, config.App.DiagnosticsIntervalMs, selfMetrics);
+                OtelConfiguration.ConfigureOpenTelemetry(services, config, config.SettingsApp.DiagnosticsIntervalMs, selfMetrics);
             })
             .Build();
 
@@ -352,7 +352,7 @@ class Program
 
         // a synthetic config: only the self-metrics meter, collected once per second
         var config = ConfigParser.Parse(new[] { "[diags]", SelfMetrics.MeterName });
-        config.App.DiagnosticsIntervalMs = 1000;
+        config.SettingsApp.DiagnosticsIntervalMs = 1000;
 
         Console.WriteLine($"Reading service metrics from PID {service.PID}, press Ctrl+C to stop.");
         Console.WriteLine("Values update once per discovery pass, so they may repeat between passes.");
@@ -419,7 +419,7 @@ class Program
         // the caller-side elevation check for summarycommand=elevated. On Linux the root-only
         // pipe already enforces this; on Windows it is the only guard, and a guardrail rather
         // than a boundary. The service refuses the command again regardless.
-        if (config.App.SummaryCommand == SummaryCommandMode.Elevated && !Environment.IsPrivilegedProcess)
+        if (config.SettingsApp.SummaryCommand == SummaryCommandMode.Elevated && !Environment.IsPrivilegedProcess)
         {
             Console.Error.WriteLine("The summary command requires an elevated caller (summarycommand=elevated).");
             return 1;
@@ -462,13 +462,13 @@ class Program
         Console.WriteLine("VALID");
         Console.WriteLine();
         Console.WriteLine("Effective settings (defaults shown where unspecified):");
-        Console.WriteLine($"  pscan            {config.App.ProcessScanIntervalMs}");
-        Console.WriteLine($"  diags            {config.App.DiagnosticsIntervalMs}");
-        Console.WriteLine($"  maxhistograms    {config.App.MaxHistograms}");
-        Console.WriteLine($"  maxtimeseries    {config.App.MaxTimeSeries}");
-        Console.WriteLine($"  loglevel         {config.App.MinimumLogLevel}");
-        Console.WriteLine($"  summarycommand   {config.App.SummaryCommand.ToString().ToLowerInvariant()}");
-        Console.WriteLine($"  redactpayload    {config.App.RedactPayload.ToString().ToLowerInvariant()}");
+        Console.WriteLine($"  pscan            {config.SettingsApp.ProcessScanIntervalMs}");
+        Console.WriteLine($"  diags            {config.SettingsApp.DiagnosticsIntervalMs}");
+        Console.WriteLine($"  maxhistograms    {config.SettingsApp.MaxHistograms}");
+        Console.WriteLine($"  maxtimeseries    {config.SettingsApp.MaxTimeSeries}");
+        Console.WriteLine($"  loglevel         {config.SettingsApp.MinimumLogLevel}");
+        Console.WriteLine($"  summarycommand   {config.SettingsApp.SummaryCommand.ToString().ToLowerInvariant()}");
+        Console.WriteLine($"  redactpayload    {config.SettingsApp.RedactPayload.ToString().ToLowerInvariant()}");
 
         // derived rather than configured, but the summarycommand setting moves it
         Console.WriteLine($"  control pipe     {ControlPipe.Name(config)}");
@@ -533,9 +533,9 @@ class Program
             }
         }
 
-        Console.WriteLine(config.HttpEndpoint is null
+        Console.WriteLine(config.SettingsHttpEndpoint is null
             ? "HTTP endpoint: none"
-            : $"HTTP endpoint: {config.HttpEndpoint.Endpoint} ({config.HttpEndpoint.Type})");
+            : $"HTTP endpoint: {config.SettingsHttpEndpoint.Endpoint} ({config.SettingsHttpEndpoint.Type})");
 
         // an unset variable may simply mean `validate` is running as a different user
         // than the service will, so this is a warning here and fatal at service start
@@ -550,7 +550,7 @@ class Program
 
         // not an error: list, procs and single-PID monitoring are all usable
         // without an export target, but service mode refuses to start
-        if (config.OtlpTargetNames.Count == 0 && config.HttpEndpoint is null)
+        if (config.OtlpTargetNames.Count == 0 && config.SettingsHttpEndpoint is null)
         {
             Console.WriteLine();
             Console.WriteLine("WARNING: no export endpoints defined. Interactive commands will work,");
@@ -571,7 +571,7 @@ class Program
         var level = LogLevel.Warning;
         try
         {
-            level = ConfigParser.Load().App.MinimumLogLevel;
+            level = ConfigParser.Load().SettingsApp.MinimumLogLevel;
         }
         catch
         {

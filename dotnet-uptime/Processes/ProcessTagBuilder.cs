@@ -56,7 +56,7 @@ public static class ProcessTagBuilder
                 "pathname" => proc.Pathname,
                 // command lines routinely carry credentials; redactpayload (default on) keeps
                 // them out of exported telemetry, unlike the always-on redaction of `summary`
-                "commandline" => redactCommandLine ? CommandLineRedactor.Redact(proc) : proc.CommandLine,
+                "commandline" => redactCommandLine ? CommandLineSanitizer.Sanitize(proc) : proc.CommandLine,
                 "clrversion" => proc.ClrProductVersionString,
                 "arch" => proc.ProcessArchitecture,
                 "rid" => proc.PortableRuntimeIdentifier,

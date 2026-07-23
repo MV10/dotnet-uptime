@@ -84,10 +84,10 @@ public class MetricsSession : IDisposable
         providers = processFilename is null
             ? config.DiagProviders
             : config.DiagProviders.Where(spec => spec.MatchesProcess(processFilename, processAssemblyName)).ToList();
-        intervalSeconds = config.App.DiagnosticsIntervalMs / 1000;
+        intervalSeconds = config.SettingsApp.DiagnosticsIntervalMs / 1000;
         if (intervalSeconds < 1) intervalSeconds = 1;
-        maxHistograms = config.App.MaxHistograms;
-        maxTimeSeries = config.App.MaxTimeSeries;
+        maxHistograms = config.SettingsApp.MaxHistograms;
+        maxTimeSeries = config.SettingsApp.MaxTimeSeries;
     }
 
     public void Start()

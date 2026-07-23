@@ -4,11 +4,26 @@ namespace MV10.DotnetUptime;
 /// <summary>
 /// OTLP push endpoint settings from a named section.
 /// </summary>
-public class OtlpEndpointConfig
+public class SettingsOltp
 {
+    /// <summary>
+    /// URI to the collector endpoint.
+    /// </summary>
     public string Endpoint { get; set; }
+    
+    /// <summary>
+    /// Data format; either grpc or protobuf are standard.
+    /// </summary>
     public string Protocol { get; set; } = "grpc";
+    
+    /// <summary>
+    /// A list of key:value HTTP header values, semicolon separated.
+    /// </summary>
     public string RawHeader { get; set; }
+    
+    /// <summary>
+    /// Duration to wait for a push operation, in milliseconds.
+    /// </summary>
     public int TimeoutMs { get; set; } = 10000;
 
     /// <summary>

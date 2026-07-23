@@ -18,7 +18,7 @@ public class ProcessScannerService : BackgroundService
     {
         this.manager = manager;
         this.logger = logger;
-        intervalMs = config.App.ProcessScanIntervalMs;
+        intervalMs = config.SettingsApp.ProcessScanIntervalMs;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
