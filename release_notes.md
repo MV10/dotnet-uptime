@@ -29,6 +29,7 @@
 * README clarification that Uptime is not "transparent" to Collectors
 * README explanation of command-line sensitive-data redaction behaviors
 * README clarification about where log events are captured (OS dependent)
+* Due to added complexity, a template config file is also distributed in the release archives
 * Bugfix - provider process-filter
 * Bugfix - `[include]`/`[exclude]` specifier parsing
 * Refactor - config parsing to support validation (including startup)
