@@ -17,7 +17,7 @@ public static class ControlPipe
     // separate pipes -- they must collide so a second service instance can be detected.
     private const string OpenPipeName = "dotnet-uptime";
 
-    // Used when elevatedsummary is true. The directory is the access control; the socket
+    // Used when summarycommand is elevated. The directory is the access control; the socket
     // itself is world-writable because the library opens it that way by design. This must
     // stay a compile-time constant: a rooted pipe name is used verbatim as the socket
     // pathname and the runtime unlinks whatever already exists there.
@@ -34,7 +34,7 @@ public static class ControlPipe
     /// disagree and the client would silently report that no service is running.
     /// </summary>
     public static string Name(ConfigParser config)
-        => config.App.RequireElevatedSummary && OperatingSystem.IsLinux()
+        => config.App.SummaryCommand == SummaryCommandMode.Elevated && OperatingSystem.IsLinux()
             ? SecurePipeName
             : OpenPipeName;
 
@@ -86,22 +86,23 @@ public static class ControlPipe
     }
 
     /// <summary>
-    /// Creates the root-only directory holding the control pipe when elevatedsummary is on.
-    /// No-op otherwise. Returns false with a message the caller should report before refusing
-    /// to start; the alternative is serving a credential-bearing pipe from an open location.
+    /// Creates the root-only directory holding the control pipe when summarycommand is
+    /// elevated. No-op otherwise. Returns false with a message the caller should report
+    /// before refusing to start; the alternative is serving a credential-bearing pipe
+    /// from an open location.
     /// </summary>
     public static bool TryPrepareDirectory(ConfigParser config, out string error)
     {
         error = null;
 
         // Windows named pipes live in the kernel object namespace, so there is no directory
-        // to protect and elevatedsummary remains a caller-side guardrail only
-        if (!config.App.RequireElevatedSummary || !OperatingSystem.IsLinux()) return true;
+        // to protect and elevated remains a caller-side guardrail only
+        if (config.App.SummaryCommand != SummaryCommandMode.Elevated || !OperatingSystem.IsLinux()) return true;
 
         if (!Environment.IsPrivilegedProcess)
         {
-            error = $"[app] elevatedsummary is true, which places the control pipe in {SecureDirectory} "
-                + "and requires the service to run as root. Set elevatedsummary to false to run unprivileged.";
+            error = $"[app] summarycommand is elevated, which places the control pipe in {SecureDirectory} "
+                + "and requires the service to run as root. Use summarycommand=enabled to run unprivileged.";
             return false;
         }
 

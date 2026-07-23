@@ -8,7 +8,7 @@
   * `summary` outputs Uptime's monitored processes info to console
 * Additional configuration file changes: 
   * `[app] loglevel` (default is Warning)
-  * `[app] elevatedsummary` to require root/Admin rights for `summary` (default false)
+  * `[app] summarycommand` disabled (default) / enabled (unsecured) / elevated (require root/Admin)
   * `[app] redactpayload` sensitive-data redaction for OTLP `process.command_line` (default true)
   * `[processtags]` section, attaches target process data like filename, etc.
   * `[hosttags]` section, attaches server data like hostname, env-vars, etc.
@@ -18,6 +18,7 @@
 * Rejected-PID caching avoids re-querying certain processes unnecessarily
 * Add Uptime-specific metrics for OTLP export (`dotnet-uptime.self`)
 * Add `stats_metrics.md` repository document explaining Uptime's custom metrics
+* Add sensitive-data redaction rules for command-line content
 * Prevent starting in service mode if it is already running
 * Prevent OTEL transmission on interactive PID monitoring if service is running
 * Windows - show permissions limitations reminder when running service as user

@@ -137,7 +137,7 @@ Register it to start at boot with `sudo update-rc.d dotnet-uptime defaults`, the
 
 You must create a configuration file to run Uptime as a service. (The interactive commands will use defaults if no config is found.)
 
-Configuration is a simple text file named `uptime.conf` in the same directory as the application. The repository has a [sample](https://github.com/MV10/dotnet-uptime/blob/master/dotnet-uptime/uptime.conf) configuration file but this is not packaged with the release files.
+Configuration is a simple text file named `uptime.conf` in the same directory as the application. The repository has a [sample](https://github.com/MV10/dotnet-uptime/blob/master/dotnet-uptime/uptime.conf) configuration file but this is not packaged with the release files. For production deployments, the application directory should require elevated rights since the configuration file could be modified to allow a user access to sensitive data (primarily, passwords and other secrets visible in process command lines).
 
 Config defines process polling frequency, OTel endpoint details, process include/exclude specifications, diagnostics sources and required metrics. Lines or any trailing content prefixed by a hash symbol (`#`) are treated as comments and disregarded. Settings are grouped into `[sections]` exclusively containing either `key=value` pairs or lists of values. Blank lines are ignored and leading/trailing whitespace is ignored. The application will not start in service mode without a config file, but the interactive commands will work with default values.
 
@@ -152,11 +152,11 @@ The `[app]` section contains settings that control overall application behavior.
 | `maxhistograms` | 10 | Max histogram instruments tracked per process |
 | `maxtimeseries` | 1000 | Max time series tracked per process |
 | `loglevel` | warning | Minimum log level: `trace`, `debug`, `information`, `warning`, `error`, `critical`, or `none` |
-| `elevatedsummary` | false | Restrict the `summary` command to elevated callers (see below) |
+| `summarycommand` | disabled | Controls the `summary` command: `disabled`, `elevated`, or `enabled` (see below) |
 
 Note that the `diags` counter collection interval is _also_ the interval at which data is pushed to OTLP collectors. When running in interactive mode monitoring a specific PID (console output), the rate is always 1 second, but any configured OTLP collection will continue at the configured rate. Collectors are expected to downsample to whatever data they actually wish to process and store.
 
-The `elevatedsummary` setting secures access to the `summary` command because it reports the command lines of monitored processes, which routinely carry passwords, tokens and connection strings. Unlike `list` and `procs`, which run their own discovery under the calling user's privileges, `summary` asks the running service, so an unprivileged caller would be borrowing the service's view of every process on the host. On Linux, it is secured at the OS level. On Windows, it is only secured internally by Uptime itself. When this setting is enabled, access to Uptime and its config should also require elevated permissions.
+The `summarycommand` setting controls the `summary` command, which reports via named pipe the command lines of monitored processes. As such, it may expose passwords, tokens and connection strings. Unlike `list` and `procs`, which run their own discovery under the calling user's privileges, `summary` asks the running service, so an unprivileged caller would be "borrowing" the service's view of every process on the host. `disabled` (the default) refuses the command entirely. `elevated` requires an elevated user account (root on Linux, or an Administrator role on Windows). Linux enforces this at the OS level, but on Windows it is only a check within Uptime itself (in theory, someone could query this data by remotely connecting to the Windows named pipe over the network).
 
 ### [include] and [exclude] Config Sections
 

@@ -15,8 +15,9 @@ public class AppConfig
     public LogLevel MinimumLogLevel { get; set; } = LogLevel.Warning;
 
     /// <summary>
-    /// When true, `summary` requires an elevated caller and the control pipe moves to a
-    /// root-only directory, which requires the service itself to run elevated.
+    /// Whether the `summary` command is disabled, requires an elevated caller (moving the
+    /// control pipe to a root-only directory on Linux), or is open to any caller. Defaults
+    /// to disabled, so an unconfigured service exposes no process command lines.
     /// </summary>
-    public bool RequireElevatedSummary { get; set; } = false;
+    public SummaryCommandMode SummaryCommand { get; set; } = SummaryCommandMode.Disabled;
 }

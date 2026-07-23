@@ -395,13 +395,22 @@ class Program
         }
         catch (ConfigMissingException)
         {
-            // the pipe name derives from [app] elevatedsummary; with no config the default
-            // (unelevated) posture is correct, which is what an empty config yields
+            // the pipe name derives from [app] summarycommand; with no config the default
+            // (disabled) posture is correct, which is what an empty config yields
             config = ConfigParser.Parse(Array.Empty<string>());
         }
         catch (ConfigException ex)
         {
             Console.WriteLine($"Config error: {ex.Message}");
+            return 1;
+        }
+
+        // the caller-side elevation check for summarycommand=elevated. On Linux the root-only
+        // pipe already enforces this; on Windows it is the only guard, and a guardrail rather
+        // than a boundary. The service refuses the command again regardless.
+        if (config.App.SummaryCommand == SummaryCommandMode.Elevated && !Environment.IsPrivilegedProcess)
+        {
+            Console.Error.WriteLine("The summary command requires an elevated caller (summarycommand=elevated).");
             return 1;
         }
 
@@ -447,9 +456,9 @@ class Program
         Console.WriteLine($"  maxhistograms    {config.App.MaxHistograms}");
         Console.WriteLine($"  maxtimeseries    {config.App.MaxTimeSeries}");
         Console.WriteLine($"  loglevel         {config.App.MinimumLogLevel}");
-        Console.WriteLine($"  elevatedsummary  {config.App.RequireElevatedSummary.ToString().ToLowerInvariant()}");
+        Console.WriteLine($"  summarycommand   {config.App.SummaryCommand.ToString().ToLowerInvariant()}");
 
-        // derived rather than configured, but the elevatedsummary setting moves it
+        // derived rather than configured, but the summarycommand setting moves it
         Console.WriteLine($"  control pipe     {ControlPipe.Name(config)}");
 
         Console.WriteLine();
